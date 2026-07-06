@@ -51,8 +51,18 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   gap: 12px;
   padding: 4px 0 12px;
 }
-.brand-panel { display: grid; gap: 8px; flex: 1; min-width: 0; }
-.brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.brand-panel {
+  display: grid;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: rgba(255,255,255,.82);
+}
+.brand { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.brand-main { display: grid; gap: 4px; min-width: 0; }
 .school-logo {
   display: grid;
   place-items: center;
@@ -72,22 +82,23 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   font-weight: 700;
 }
 h1, h2, h3, p { margin-top: 0; }
-h1 { margin-bottom: 0; font-size: 24px; letter-spacing: 0; }
+h1 { margin-bottom: 0; font-size: 23px; line-height: 1.18; letter-spacing: 0; overflow-wrap: anywhere; }
 h2 { font-size: 20px; }
 h3 { font-size: 16px; margin-bottom: 8px; }
 
 .timebar {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
-  margin: 0;
-  padding: 8px;
-  border: 1px solid var(--line);
+  margin-top: 4px;
+  padding: 6px;
+  border: 0;
   border-radius: 8px;
-  background: var(--panel);
-  overflow-x: auto;
+  background: #f7f1ff;
 }
 .timebar span { flex: 0 0 auto; color: var(--muted); font-size: 12px; font-weight: 700; }
+.timebar .ghost { min-height: 30px; padding: 5px 8px; }
 .speed.active { border-color: var(--accent); background: #eee4fb; color: var(--accent-dark); }
 
 .status-grid {
@@ -225,7 +236,7 @@ h3 { font-size: 16px; margin-bottom: 8px; }
   bottom: 0;
   z-index: 8;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   width: min(100%, 480px);
   transform: translateX(-50%);
   padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
@@ -238,7 +249,7 @@ h3 { font-size: 16px; margin-bottom: 8px; }
   border-radius: 8px;
   background: transparent;
   color: var(--muted);
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
 }
 .tab.active { background: #eee4fb; color: var(--accent-dark); }
@@ -284,3 +295,22 @@ h3 { font-size: 16px; margin-bottom: 8px; }
 }
 .income { color: var(--accent-dark); font-weight: 700; }
 .expense { color: var(--danger); font-weight: 700; }
+
+.place-title { display: flex; align-items: center; gap: 8px; }
+.place-icon { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: 8px; background: #eee4fb; color: var(--accent-dark); font-size: 13px; font-weight: 800; }
+.market-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.market-box { padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fbf8ff; }
+.research-grid { display: grid; gap: 10px; margin-bottom: 10px; }
+.research-section {
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.compact-list { gap: 8px; }
+.proposal-row {
+  padding: 9px;
+  border: 1px solid #eadff5;
+  border-radius: 8px;
+  background: #fbf8ff;
+}
