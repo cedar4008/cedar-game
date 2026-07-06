@@ -71,6 +71,18 @@ function save() {
 function loadSave() {
   const raw = localStorage.getItem(SAVE_KEY);
   state.data = raw ? JSON.parse(raw) : null;
+  ensureDefaults();
+}
+
+function ensureDefaults() {
+  if (!state.data) return;
+  state.data.loans ||= [];
+  state.data.stockShares ||= 0;
+  state.data.stockPrice ||= 100;
+  state.data.finance ||= [];
+  state.data.rankHistory ||= [];
+  state.data.proposals ||= [];
+  state.data.papers ||= [];
 }
 
 function msg(text, isError = false) {
@@ -128,6 +140,9 @@ function createInitialSave({ schoolName, address, logo }) {
     jobPosts: [],
     proposals: [],
     papers: [],
+    loans: [],
+    stockShares: 0,
+    stockPrice: 100,
     finance: [{ id: uid(), kind: "收入", category: "初始资金", amount: 620000, note: "建校启动资金", at: nowText() }],
     rankHistory: [],
     pendingEvent: null,
@@ -206,6 +221,8 @@ function renderStatus() {
   $("#schoolLogo").textContent = d.logo || "校";
   $("#schoolName").textContent = d.schoolName;
   $("#schoolAddress").textContent = d.address;
+  $("#statusGrid").hidden = state.tab !== "campus";
+  if (state.tab !== "campus") return;
   $("#statusGrid").innerHTML = [
     ["资金", money(d.money)],
     ["声望", d.reputation],
@@ -226,7 +243,7 @@ function renderCampus() {
         return `
           <article class="item">
             <div class="item-top">
-              <div><h3>${item.icon} ${item.name}</h3><div class="meta">数量 ${item.quantity} · 等级 ${item.level} · ${item.effect}</div></div>
+              <div><h3 class="place-title"><span class="place-icon">${item.icon}</span>${item.name}</h3><div class="meta">数量 ${item.quantity} · 等级 ${item.level} · ${item.effect}</div></div>
               <span class="pill">不限数量</span>
             </div>
             <div class="actions">
@@ -295,7 +312,7 @@ function renderTalent() {
       </div>
     </div>
     <div class="item">
-      <h3>小专业招生</h3>
+      <h3>招生</h3>
       <div class="form-grid">
         <select id="studentMajor">${state.data.majors.map((m) => `<option value="${m.id}">${m.disciplineName} · ${m.name}</option>`).join("")}</select>
         <select id="studentLevel"><option>普通</option><option>优秀</option><option>拔尖</option></select>
@@ -346,45 +363,63 @@ function renderPost(post) {
 }
 
 function renderResearch() {
+  const researchProjects = state.data.proposals.filter((p) => p.type === "科研");
+  const horizontalProjects = state.data.proposals.filter((p) => p.type !== "科研");
+  const projectCard = (p) => `
+    <article class="proposal-row">
+      <div class="item-top">
+        <div>
+          <h3>${p.name}</h3>
+          <div class="meta">${p.teacherName} 申请 · ${p.status} · 进度 ${p.progress}%</div>
+          <div class="meta">经费 ${money(p.cost)} · 预期到账 ${money(p.expectedIncome)} · 声望 +${p.reputation}</div>
+        </div>
+        <span class="pill ${p.status === "待审核" ? "warn" : ""}">${p.status}</span>
+      </div>
+      <div class="progress"><i style="width:${p.progress}%"></i></div>
+      ${p.status === "待审核" ? `<div class="actions"><button class="primary" onclick="reviewProposal('${p.id}', 'approve')">审核通过</button><button class="ghost" onclick="reviewProposal('${p.id}', 'reject')">驳回</button></div>` : ""}
+    </article>
+  `;
   view.innerHTML = `
     <div class="section-head">
       <div><p class="eyebrow">教师自主申请</p><h2>科研、横向与论文</h2></div>
       <button class="secondary small" onclick="collectProposals()">征集申请</button>
     </div>
-    <div class="list">
-      ${state.data.proposals.map((p) => `
-        <article class="item">
-          <div class="item-top">
-            <div>
-              <h3>${p.type} · ${p.name}</h3>
-              <div class="meta">${p.teacherName} 申请 · ${p.status} · 进度 ${p.progress}%</div>
-              <div class="meta">经费 ${money(p.cost)} · 预期到账 ${money(p.expectedIncome)} · 声望 +${p.reputation}</div>
+    <div class="research-grid">
+      <section class="research-section">
+        <h3>科研项目</h3>
+        <p class="meta">教师主动提交课题，学校审核后投入经费并跟踪成果。</p>
+        <div class="list compact-list">
+          ${researchProjects.map(projectCard).join("") || `<p class="meta">暂无科研项目申请。</p>`}
+        </div>
+      </section>
+      <section class="research-section">
+        <h3>横向项目</h3>
+        <p class="meta">面向企业合作和社会服务，完成后获得到账收入与声望。</p>
+        <div class="list compact-list">
+          ${horizontalProjects.map(projectCard).join("") || `<p class="meta">暂无横向项目申请。</p>`}
+        </div>
+      </section>
+    </div>
+    <section class="research-section">
+      <h3>论文与成果</h3>
+      <div class="list compact-list">
+        ${state.data.papers.slice(0, 6).map((p) => `
+          <article class="proposal-row">
+            <div class="item-top">
+              <div><h3>${p.title}</h3><div class="meta">${p.level} · ${p.discipline} · 作者 ${p.teacherName} · 影响力 +${p.impact}</div></div>
+              <span class="pill">${p.status}</span>
             </div>
-            <span class="pill ${p.status === "待审核" ? "warn" : ""}">${p.status}</span>
-          </div>
-          <div class="progress"><i style="width:${p.progress}%"></i></div>
-          ${p.status === "待审核" ? `<div class="actions"><button class="primary" onclick="reviewProposal('${p.id}', 'approve')">审核通过</button><button class="ghost" onclick="reviewProposal('${p.id}', 'reject')">驳回</button></div>` : ""}
-        </article>
-      `).join("") || `<p class="meta">暂无项目申请。点击“征集申请”后，教师会主动提交科研或横向项目。</p>`}
-    </div>
-    <h3 style="margin-top:14px">论文与成果</h3>
-    <div class="list">
-      ${state.data.papers.map((p) => `
-        <article class="item">
-          <div class="item-top">
-            <div><h3>${p.title}</h3><div class="meta">${p.level} · ${p.discipline} · 作者 ${p.teacherName} · 影响力 +${p.impact}</div></div>
-            <span class="pill">${p.status}</span>
-          </div>
-        </article>
-      `).join("") || `<p class="meta">暂无论文。科研项目完成后会自动形成论文或成果报告。</p>`}
-    </div>
+          </article>
+        `).join("") || `<p class="meta">暂无论文。科研项目完成后会自动形成论文或成果报告。</p>`}
+      </div>
+    </section>
   `;
 }
 
 function renderRanking() {
   const d = state.data;
   view.innerHTML = `
-    <div class="section-head"><div><p class="eyebrow">多维排名</p><h2>排名与财务</h2></div></div>
+    <div class="section-head"><div><p class="eyebrow">多维排名</p><h2>学校排名</h2></div></div>
     <div class="status-grid">
       <div class="stat"><span>省内排名</span><b>${d.provinceRank}</b></div>
       <div class="stat"><span>国内综合</span><b>${d.domesticRank}</b></div>
@@ -394,9 +429,29 @@ function renderRanking() {
       <div class="stat"><span>论文/专利</span><b>${d.papersCount}/${d.patents}</b></div>
     </div>
     <h3>排名历史</h3>
-    ${d.rankHistory.map((r) => `<div class="rank-row"><span>Y${r.year}-${r.month}月</span><div class="meta">省${r.provinceRank} · 国内${r.domesticRank} · 国际${r.worldRank}</div><span>教${r.teachingRank}/研${r.researchRank}</span></div>`).join("")}
+    <div class="list compact-list">
+      ${d.rankHistory.slice(-5).reverse().map((r) => `<div class="rank-row"><span>Y${r.year}-${r.month}月</span><div class="meta">省${r.provinceRank} · 国内${r.domesticRank} · 国际${r.worldRank}</div><span>教${r.teachingRank}/研${r.researchRank}</span></div>`).join("") || `<p class="meta">暂无排名历史，推进月份后会自动记录。</p>`}
+    </div>
+  `;
+}
+
+
+function renderFinance() {
+  const d = state.data;
+  const stockValue = d.stockShares * d.stockPrice;
+  const loanTotal = d.loans.reduce((sum, loan) => sum + loan.balance, 0);
+  view.innerHTML = `
+    <div class="section-head"><div><p class="eyebrow">资金运作</p><h2>贷款与投资</h2></div></div>
+    <div class="market-grid">
+      <div class="market-box"><p class="eyebrow">贷款余额</p><h3>${money(loanTotal)}</h3><div class="meta">每学期结算利息，适合短期扩建。</div></div>
+      <div class="market-box"><p class="eyebrow">股票持仓</p><h3>${d.stockShares} 股</h3><div class="meta">现价 ${money(d.stockPrice)} · 市值 ${money(stockValue)}</div></div>
+    </div>
+    <div class="item" style="margin-top:10px"><h3>学校贷款</h3><div class="actions"><button class="primary" onclick="takeLoan(100000)">贷款 ${money(100000)}</button><button class="secondary" onclick="takeLoan(300000)">贷款 ${money(300000)}</button><button class="ghost" onclick="repayLoan(100000)">还款 ${money(100000)}</button></div></div>
+    <div class="item"><h3>股票投资</h3><div class="meta">股票价格会随月份波动，风险自担。</div><div class="actions"><button class="primary" onclick="buyStock(10)">买入 10 股</button><button class="secondary" onclick="buyStock(50)">买入 50 股</button><button class="ghost" onclick="sellStock(10)">卖出 10 股</button><button class="ghost" onclick="sellStock(50)">卖出 50 股</button></div></div>
     <h3 style="margin-top:14px">财务流水</h3>
-    ${d.finance.map(renderFinanceRow).join("")}
+    <div class="list compact-list">
+      ${d.finance.slice(0, 5).map(renderFinanceRow).join("") || `<p class="meta">暂无财务流水。</p>`}
+    </div>
   `;
 }
 
@@ -430,6 +485,7 @@ function render() {
   if (state.tab === "disciplines") renderDisciplines();
   if (state.tab === "talent") renderTalent();
   if (state.tab === "research") renderResearch();
+  if (state.tab === "finance") renderFinance();
   if (state.tab === "ranking") renderRanking();
 }
 
@@ -648,6 +704,7 @@ function advanceTime(months = 1) {
       state.data.year += 1;
     }
     state.data.teachers.forEach((t) => t.promotion += 2);
+    updateStockPrice();
     progressProjects();
     if ([6, 12].includes(state.data.month)) settleTerm();
     if (!state.data.pendingEvent && Math.random() < 0.16) createEvent();
@@ -684,10 +741,54 @@ function settleTerm() {
   const tuition = m.students * 900;
   const grant = 65000 + state.data.reputation * 1000;
   const salary = state.data.teachers.reduce((sum, t) => sum + Math.round(t.salary / 2), 0);
+  const interest = state.data.loans.reduce((sum, loan) => sum + Math.round(loan.balance * loan.rate / 2), 0);
   income(tuition + grant, "学期收入", "学费收入与政府拨款");
   if (salary && spend(salary, "教师薪酬", "本学期教师薪酬")) {}
+  if (interest && spend(interest, "贷款利息", "本学期贷款利息")) {}
   recalcRank();
   addRank();
+}
+
+
+function takeLoan(amount) {
+  state.data.loans.push({ id: uid(), balance: amount, rate: 0.06 });
+  income(amount, "学校贷款", `获得贷款${money(amount)}`);
+  save();
+  render();
+}
+
+function repayLoan(amount) {
+  const loan = state.data.loans.find((item) => item.balance > 0);
+  if (!loan) return msg("当前没有贷款。", true);
+  const pay = Math.min(amount, loan.balance);
+  if (!spend(pay, "贷款还款", `偿还贷款${money(pay)}`)) return;
+  loan.balance -= pay;
+  state.data.loans = state.data.loans.filter((item) => item.balance > 0);
+  save();
+  render();
+}
+
+function buyStock(shares) {
+  const cost = shares * state.data.stockPrice;
+  if (!spend(cost, "股票投资", `买入${shares}股校园发展指数`)) return;
+  state.data.stockShares += shares;
+  save();
+  render();
+}
+
+function sellStock(shares) {
+  const count = Math.min(shares, state.data.stockShares);
+  if (!count) return msg("当前没有足够股票。", true);
+  state.data.stockShares -= count;
+  income(count * state.data.stockPrice, "股票卖出", `卖出${count}股校园发展指数`);
+  save();
+  render();
+}
+
+
+function updateStockPrice() {
+  const drift = 1 + (Math.random() - 0.45) * 0.12;
+  state.data.stockPrice = clamp(Math.round(state.data.stockPrice * drift), 45, 260);
 }
 
 function recalcRank() {
