@@ -1,4 +1,6 @@
-const SAVE_KEY = "cedar_game_save_v1";
+const SAVE_KEY = "cedar_game_save_v2";
+const OLD_SAVE_KEYS = ["cedar_game_save_v1"];
+const SAVE_RESET_KEY = "cedar_game_reset_20260707_save_page";
 const SPEED_KEY = "cedar_game_speed";
 
 const ADDRESSES = [
@@ -44,6 +46,43 @@ const BUILDINGS = [
   { name: "操场", icon: "体", baseCost: 80000, effect: "提升校园活力" },
 ];
 
+const SCHOOL_LEVELS = [
+  { name: "公办专科", money: 0, reputation: 0, students: 0, teachers: 0, professors: 0, papers: 0, research: 0 },
+  { name: "应用型本科", money: 260000, reputation: 24, students: 600, teachers: 6, professors: 1, papers: 1, research: 20 },
+  { name: "普通本科", money: 520000, reputation: 34, students: 1200, teachers: 12, professors: 2, papers: 4, research: 42 },
+  { name: "省属重点大学", money: 900000, reputation: 48, students: 2200, teachers: 24, professors: 5, papers: 10, research: 86 },
+  { name: "博士授权大学", money: 1500000, reputation: 62, students: 3600, teachers: 42, professors: 10, papers: 22, research: 150 },
+  { name: "国家重点大学", money: 2400000, reputation: 74, students: 5600, teachers: 68, professors: 18, papers: 42, research: 260 },
+  { name: "世界一流大学", money: 4200000, reputation: 86, students: 8200, teachers: 110, professors: 34, papers: 80, research: 460 },
+  { name: "世界超一流大学", money: 7200000, reputation: 94, students: 12000, teachers: 170, professors: 58, papers: 140, research: 760 },
+];
+
+const COLLEGE_LEVEL_LIMITS = {
+  "航天学院": 3,
+  "计算学部": 2,
+  "机电工程学院": 1,
+  "材料科学与工程学院": 2,
+  "电子与信息工程学院": 2,
+  "自动化学院": 2,
+  "空天科学学院": 4,
+  "系统工程学院": 3,
+  "数学科学学院": 2,
+  "物理学院": 2,
+  "生命科学学院": 3,
+  "信息科学技术学院": 3,
+  "法学院": 1,
+  "经济学院": 1,
+  "资源环境学院": 2,
+  "草地农业科技学院": 1,
+};
+
+const STOCK_MARKETS = [
+  { id: "educloud", name: "启明教育科技", price: 86, basePrice: 86, risk: "稳健" },
+  { id: "chip", name: "华芯智能装备", price: 128, basePrice: 128, risk: "成长" },
+  { id: "bio", name: "兰泽生物医药", price: 74, basePrice: 74, risk: "波动" },
+  { id: "energy", name: "北辰新能源", price: 112, basePrice: 112, risk: "成长" },
+];
+
 const state = {
   data: null,
   tab: "campus",
@@ -55,6 +94,7 @@ const state = {
 const $ = (selector) => document.querySelector(selector);
 const view = $("#view");
 const notice = $("#notice");
+const saveContent = $("#saveContent");
 
 function uid() {
   return Math.random().toString(16).slice(2) + Date.now().toString(16);
@@ -65,10 +105,18 @@ function money(value) {
 }
 
 function save() {
+  if (!state.data) return;
+  state.data.savedAt = nowText();
   localStorage.setItem(SAVE_KEY, JSON.stringify(state.data));
 }
 
 function loadSave() {
+  if (localStorage.getItem(SAVE_RESET_KEY) !== "done") {
+    localStorage.removeItem(SAVE_KEY);
+    OLD_SAVE_KEYS.forEach((key) => localStorage.removeItem(key));
+    localStorage.setItem(SAVE_RESET_KEY, "done");
+  }
+  OLD_SAVE_KEYS.forEach((key) => localStorage.removeItem(key));
   const raw = localStorage.getItem(SAVE_KEY);
   state.data = raw ? JSON.parse(raw) : null;
   ensureDefaults();
@@ -76,13 +124,34 @@ function loadSave() {
 
 function ensureDefaults() {
   if (!state.data) return;
+  state.data.schoolLevelIndex ??= 0;
+  state.data.ui ||= {};
   state.data.loans ||= [];
-  state.data.stockShares ||= 0;
-  state.data.stockPrice ||= 100;
+  state.data.stocks ||= STOCK_MARKETS.map((stock, index) => ({
+    ...stock,
+    shares: index === 0 ? (state.data.stockShares || 0) : 0,
+    price: index === 0 ? (state.data.stockPrice || stock.price) : stock.price,
+  }));
+  state.data.stocks = STOCK_MARKETS.map((template, index) => {
+    const saved = state.data.stocks.find((stock) => stock.id === template.id) || {};
+    return { ...template, ...saved, price: saved.price || template.price, basePrice: template.basePrice, shares: saved.shares || (index === 0 ? state.data.stockShares || 0 : 0) };
+  });
   state.data.finance ||= [];
   state.data.rankHistory ||= [];
   state.data.proposals ||= [];
   state.data.papers ||= [];
+  state.data.teachers ||= [];
+  state.data.teachers.forEach((teacher) => {
+    teacher.promotion ??= 0;
+    teacher.papers ??= 0;
+    teacher.majorName ??= "";
+  });
+  state.data.jobPosts ||= [];
+  state.data.jobPosts.forEach((post) => {
+    post.positions ??= 1;
+    post.hiredCount ??= post.applications?.filter((app) => app.status === "已录用").length || 0;
+    post.majorName ??= "不限专业";
+  });
 }
 
 function msg(text, isError = false) {
@@ -103,20 +172,21 @@ function clamp(value, low, high) {
 function createInitialSave({ schoolName, address, logo }) {
   const id = uid();
   const disciplines = [
-    { id: uid(), name: "理工学院", degreeLevel: "本科", rank: 150, strength: 46, research: 22 },
-    { id: uid(), name: "文史学院", degreeLevel: "本科", rank: 210, strength: 36, research: 14 },
+    { id: uid(), name: "信息工程学院", degreeLevel: "专科", rank: 260, strength: 28, research: 8 },
+    { id: uid(), name: "人文管理学院", degreeLevel: "专科", rank: 280, strength: 24, research: 6 },
   ];
   const majors = [
-    { id: uid(), disciplineId: disciplines[0].id, disciplineName: "理工学院", name: "计算机科学与技术", students: 140, quality: 63 },
-    { id: uid(), disciplineId: disciplines[0].id, disciplineName: "理工学院", name: "智能制造工程", students: 90, quality: 57 },
-    { id: uid(), disciplineId: disciplines[1].id, disciplineName: "文史学院", name: "汉语言文学", students: 100, quality: 55 },
-    { id: uid(), disciplineId: disciplines[1].id, disciplineName: "文史学院", name: "新闻传播学", students: 80, quality: 52 },
+    { id: uid(), disciplineId: disciplines[0].id, disciplineName: "信息工程学院", name: "计算机应用技术", students: 120, quality: 54 },
+    { id: uid(), disciplineId: disciplines[0].id, disciplineName: "信息工程学院", name: "软件技术", students: 90, quality: 52 },
+    { id: uid(), disciplineId: disciplines[1].id, disciplineName: "人文管理学院", name: "现代文秘", students: 90, quality: 51 },
+    { id: uid(), disciplineId: disciplines[1].id, disciplineName: "人文管理学院", name: "大数据与会计", students: 100, quality: 53 },
   ];
   state.data = {
     id,
     schoolName,
     address,
     logo,
+    schoolLevelIndex: 0,
     money: 620000,
     reputation: 20,
     satisfaction: 72,
@@ -134,15 +204,15 @@ function createInitialSave({ schoolName, address, logo }) {
     disciplines,
     majors,
     teachers: [
-      { id: uid(), name: "王明远", title: "讲师", disciplineName: "理工学院", teaching: 64, research: 58, salary: 90000, promotion: 12 },
-      { id: uid(), name: "陈书宁", title: "副教授", disciplineName: "文史学院", teaching: 70, research: 52, salary: 120000, promotion: 12 },
+      { id: uid(), name: "王明远", title: "讲师", disciplineName: "信息工程学院", majorName: "计算机应用技术", teaching: 64, research: 42, salary: 90000, promotion: 12, papers: 0 },
+      { id: uid(), name: "陈书宁", title: "讲师", disciplineName: "人文管理学院", majorName: "现代文秘", teaching: 66, research: 36, salary: 85000, promotion: 10, papers: 0 },
     ],
     jobPosts: [],
     proposals: [],
     papers: [],
     loans: [],
-    stockShares: 0,
-    stockPrice: 100,
+    stocks: STOCK_MARKETS.map((stock) => ({ ...stock, shares: 0 })),
+    ui: {},
     finance: [{ id: uid(), kind: "收入", category: "初始资金", amount: 620000, note: "建校启动资金", at: nowText() }],
     rankHistory: [],
     pendingEvent: null,
@@ -188,12 +258,97 @@ function addRank() {
 }
 
 function metrics() {
+  const professors = state.data.teachers.filter((t) => ["教授", "二级教授", "一级教授", "杰出教授"].includes(t.title)).length;
+  const research = state.data.disciplines.reduce((sum, d) => sum + d.research, 0);
   return {
     students: state.data.majors.reduce((sum, m) => sum + m.students, 0),
     teachers: state.data.teachers.length,
+    professors,
     majors: state.data.majors.length,
     buildingCount: state.data.buildings.reduce((sum, b) => sum + b.quantity, 0),
+    research,
   };
+}
+
+function currentSchoolLevel() {
+  return SCHOOL_LEVELS[state.data.schoolLevelIndex || 0] || SCHOOL_LEVELS[0];
+}
+
+function nextSchoolLevel() {
+  return SCHOOL_LEVELS[(state.data.schoolLevelIndex || 0) + 1] || null;
+}
+
+function collegeMinLevel(college) {
+  return COLLEGE_LEVEL_LIMITS[college?.name] ?? 1;
+}
+
+function levelRequirementText(req) {
+  const parts = [];
+  if (req.money) parts.push(`资金${money(req.money)}`);
+  if (req.reputation) parts.push(`声望${req.reputation}`);
+  if (req.students) parts.push(`学生${req.students}人`);
+  if (req.teachers) parts.push(`教师${req.teachers}人`);
+  if (req.professors) parts.push(`教授${req.professors}人`);
+  if (req.papers) parts.push(`论文/成果${req.papers}项`);
+  if (req.research) parts.push(`科研实力${req.research}`);
+  return parts.join(" · ") || "无";
+}
+
+function meetsSchoolLevel(req) {
+  const m = metrics();
+  return state.data.money >= req.money
+    && state.data.reputation >= req.reputation
+    && m.students >= req.students
+    && m.teachers >= req.teachers
+    && m.professors >= req.professors
+    && state.data.papers.length >= req.papers
+    && m.research >= req.research;
+}
+
+function buildingCapacity(item) {
+  const each = { 教学楼: 500, 宿舍: 800, 图书馆: 300, 实验室: 120, 食堂: 900, 操场: 700 }[item.name] || 200;
+  return item.quantity * each + item.level * Math.round(each * 0.35);
+}
+
+function degreeRequirement(degreeType) {
+  return degreeType === "硕士点"
+    ? { students: 240, teachers: 8, professors: 1, papers: 3, research: 42, strength: 48, money: 90000 }
+    : { students: 520, teachers: 16, professors: 4, papers: 10, research: 88, strength: 82, money: 180000 };
+}
+
+function disciplineMetrics(discipline) {
+  const teachers = state.data.teachers.filter((t) => t.disciplineName === discipline.name);
+  const majors = state.data.majors.filter((m) => m.disciplineId === discipline.id);
+  return {
+    students: majors.reduce((sum, m) => sum + m.students, 0),
+    teachers: teachers.length,
+    professors: teachers.filter((t) => ["教授", "二级教授", "一级教授", "杰出教授"].includes(t.title)).length,
+    papers: state.data.papers.filter((p) => p.discipline === discipline.name).length,
+  };
+}
+
+function degreeRequirementText(req) {
+  return `学生${req.students} · 教师${req.teachers} · 教授${req.professors} · 论文/成果${req.papers} · 科研${req.research} · 实力${req.strength}`;
+}
+
+function promotionRequirement(teacher) {
+  const route = [
+    { from: "助教", to: "讲师", points: 12, teaching: 55, research: 35, papers: 0, cost: 20000 },
+    { from: "讲师", to: "副教授", points: 30, teaching: 60, research: 50, papers: 1, cost: 50000 },
+    { from: "副教授", to: "教授", points: 65, teaching: 68, research: 65, papers: 3, cost: 100000 },
+    { from: "教授", to: "二级教授", points: 110, teaching: 75, research: 78, papers: 6, cost: 160000 },
+    { from: "二级教授", to: "一级教授", points: 160, teaching: 82, research: 88, papers: 10, cost: 240000 },
+  ];
+  return route.find((item) => item.from === teacher.title) || null;
+}
+
+function isPromotionEligible(teacher) {
+  const req = promotionRequirement(teacher);
+  return !!req
+    && teacher.promotion >= req.points
+    && teacher.teaching >= req.teaching
+    && teacher.research >= req.research
+    && (teacher.papers || 0) >= req.papers;
 }
 
 function renderSetup() {
@@ -210,6 +365,7 @@ function renderSetup() {
           ${ADDRESSES.map((address) => `<option value="${address}">${address}</option>`).join("")}
         </select>
         <button class="primary full" onclick="createSchool()">创建学校并进入游戏</button>
+        <button class="ghost full" onclick="openSaveModal()">查看存档</button>
       </div>
     </section>
   `;
@@ -220,6 +376,7 @@ function renderStatus() {
   const m = metrics();
   $("#schoolLogo").textContent = d.logo || "校";
   $("#schoolName").textContent = d.schoolName;
+  $("#schoolLevel").textContent = currentSchoolLevel().name;
   $("#schoolAddress").textContent = d.address;
   $("#statusGrid").hidden = state.tab !== "campus";
   if (state.tab !== "campus") return;
@@ -234,8 +391,21 @@ function renderStatus() {
 }
 
 function renderCampus() {
+  const level = currentSchoolLevel();
+  const next = nextSchoolLevel();
   view.innerHTML = `
-    <div class="section-head"><div><p class="eyebrow">校园建设</p><h2>场所数量不限</h2></div></div>
+    <div class="section-head"><div><p class="eyebrow">校园总览</p><h2>办学层次与校园建设</h2></div></div>
+    <div class="item">
+      <div class="item-top">
+        <div>
+          <h3>当前层次：${level.name}</h3>
+          <div class="meta">${next ? `下一层次：${next.name} · 要求 ${levelRequirementText(next)}` : "已达到最高办学层次。"}</div>
+        </div>
+        <span class="pill">${next && meetsSchoolLevel(next) ? "可升级" : "建设中"}</span>
+      </div>
+      ${next ? `<div class="actions"><button class="primary" onclick="upgradeSchoolLevel()">申请升格</button></div>` : ""}
+    </div>
+    <div class="section-head inner-head"><div><p class="eyebrow">校园建设</p><h2>场所数量不限</h2></div></div>
     <div class="list">
       ${state.data.buildings.map((item) => {
         const buildCost = Math.round(item.baseCost * (1 + item.quantity * 0.18));
@@ -243,7 +413,7 @@ function renderCampus() {
         return `
           <article class="item">
             <div class="item-top">
-              <div><h3 class="place-title"><span class="place-icon">${item.icon}</span>${item.name}</h3><div class="meta">数量 ${item.quantity} · 等级 ${item.level} · ${item.effect}</div></div>
+              <div><h3 class="place-title"><span class="place-icon">${item.icon}</span>${item.name}</h3><div class="meta">数量 ${item.quantity} · 等级 ${item.level} · 可容纳 ${buildingCapacity(item)} 人 · ${item.effect}</div></div>
               <span class="pill">不限数量</span>
             </div>
             <div class="actions">
@@ -258,6 +428,7 @@ function renderCampus() {
 }
 
 function renderDisciplines() {
+  const levelIndex = state.data.schoolLevelIndex || 0;
   view.innerHTML = `
     <div class="section-head"><div><p class="eyebrow">学科与专业</p><h2>开设学院</h2></div></div>
     <div class="item">
@@ -265,9 +436,17 @@ function renderDisciplines() {
       <div class="form-grid">
         <select id="collegePreset" class="full" onchange="fillCollegePreset()">
           <option value="">选择学院模板</option>
-          ${COLLEGES.map((item) => `<option value="${item.name}">${item.name}</option>`).join("")}
+          <option value="__custom__">自定义学院</option>
+          ${COLLEGES.map((item) => {
+            const need = collegeMinLevel(item);
+            const locked = levelIndex < need;
+            return `<option value="${item.name}" ${locked ? "disabled" : ""}>${item.name}${locked ? `（需${SCHOOL_LEVELS[need].name}）` : ""}</option>`;
+          }).join("")}
         </select>
-        <input id="newDiscipline" class="full" placeholder="学院名称">
+        <div id="customCollegeFields" class="form-grid full" hidden>
+          <input id="customCollegeName" class="full" placeholder="自定义学院名称">
+          <input id="customCollegeMajors" class="full" placeholder="专业名称，用顿号或逗号分隔">
+        </div>
         <div id="majorPreview" class="major-preview full"><span class="meta">选择学院后，这里会逐条列出专业。</span></div>
         <button class="secondary full" onclick="openDiscipline()">开设学院</button>
       </div>
@@ -276,6 +455,7 @@ function renderDisciplines() {
       ${state.data.disciplines.map((d) => {
         const majors = state.data.majors.filter((m) => m.disciplineId === d.id);
         const degreeTarget = d.degreeLevel === "博士点" ? "" : d.degreeLevel === "硕士点" ? "博士点" : "硕士点";
+        const req = degreeTarget ? degreeRequirement(degreeTarget) : null;
         return `
           <article class="item">
             <div class="item-top">
@@ -283,6 +463,7 @@ function renderDisciplines() {
                 <h3>${d.name}</h3>
                 <div class="meta">${d.degreeLevel} · 学科排名 ${d.rank} · 实力 ${d.strength} · 科研 ${d.research}</div>
                 <div class="meta">专业：${majors.map((m) => `${m.name}(${m.students}人)`).join("、") || "暂无"}</div>
+                ${req ? `<div class="meta">申请${degreeTarget}要求：${degreeRequirementText(req)}</div>` : ""}
               </div>
               <span class="pill">第${d.rank}</span>
             </div>
@@ -297,24 +478,52 @@ function renderDisciplines() {
   `;
 }
 
+function disciplineOptions(selected) {
+  return state.data.disciplines.map((d) => `<option value="${d.name}" ${d.name === selected ? "selected" : ""}>${d.name}</option>`).join("");
+}
+
+function majorOptionsForDiscipline(disciplineName, selectedMajorId = "") {
+  const majors = state.data.majors.filter((m) => !disciplineName || m.disciplineName === disciplineName);
+  return majors.map((m) => `<option value="${m.id}" ${m.id === selectedMajorId ? "selected" : ""}>${m.disciplineName} · ${m.name}</option>`).join("");
+}
+
+function syncJobMajorOptions() {
+  const discipline = $("#jobDiscipline")?.value || "";
+  const select = $("#jobMajor");
+  if (!select) return;
+  select.innerHTML = `<option value="">不限专业</option>${majorOptionsForDiscipline(discipline, state.data.ui.selectedJobMajor || "")}`;
+}
+
+function rememberTalentSelections() {
+  state.data.ui.selectedJobDiscipline = $("#jobDiscipline")?.value || state.data.ui.selectedJobDiscipline || "";
+  state.data.ui.selectedJobMajor = $("#jobMajor")?.value || "";
+  state.data.ui.selectedStudentMajor = $("#studentMajor")?.value || state.data.ui.selectedStudentMajor || "";
+}
+
 function renderTalent() {
+  const selectedJobDiscipline = state.data.ui.selectedJobDiscipline || state.data.disciplines[0]?.name || "";
+  const selectedJobMajor = state.data.ui.selectedJobMajor || "";
+  const selectedStudentMajor = state.data.ui.selectedStudentMajor || state.data.majors[0]?.id || "";
+  const eligibleTeachers = state.data.teachers.filter(isPromotionEligible);
   view.innerHTML = `
     <div class="section-head"><div><p class="eyebrow">人才系统</p><h2>招聘、招生、晋升</h2></div></div>
     <div class="item">
       <h3>发布教师招聘公告</h3>
       <div class="form-grid">
         <input id="jobTitle" class="full" value="青年教师招聘公告">
-        <select id="jobDiscipline">${state.data.disciplines.map((d) => `<option value="${d.name}">${d.name}</option>`).join("")}</select>
+        <select id="jobDiscipline" onchange="state.data.ui.selectedJobDiscipline=this.value; state.data.ui.selectedJobMajor=''; syncJobMajorOptions();">${disciplineOptions(selectedJobDiscipline)}</select>
+        <select id="jobMajor"><option value="">不限专业</option>${majorOptionsForDiscipline(selectedJobDiscipline, selectedJobMajor)}</select>
         <select id="jobLevel"><option>优秀</option><option>普通</option><option>杰出</option></select>
         <input id="jobSalary" type="number" value="120000" min="60000" step="10000">
         <input id="jobBudget" type="number" value="25000" min="8000" step="1000">
+        <input id="jobPositions" type="number" value="2" min="1" max="12" step="1" placeholder="岗位数">
         <button class="primary full" onclick="createJobPost()">发布公告并接收简历</button>
       </div>
     </div>
     <div class="item">
       <h3>招生</h3>
       <div class="form-grid">
-        <select id="studentMajor">${state.data.majors.map((m) => `<option value="${m.id}">${m.disciplineName} · ${m.name}</option>`).join("")}</select>
+        <select id="studentMajor" class="full" onchange="state.data.ui.selectedStudentMajor=this.value">${majorOptionsForDiscipline("", selectedStudentMajor)}</select>
         <select id="studentLevel"><option>普通</option><option>优秀</option><option>拔尖</option></select>
         <input id="studentCount" type="number" value="40" min="10" step="10">
         <button class="secondary" onclick="recruitStudents()">招生</button>
@@ -324,24 +533,28 @@ function renderTalent() {
     <div class="list">${state.data.jobPosts.map(renderPost).join("") || `<p class="meta">暂无招聘公告。</p>`}</div>
     <h3 style="margin-top:14px">教师晋升</h3>
     <div class="list">
-      ${state.data.teachers.map((t) => `
+      ${eligibleTeachers.map((t) => {
+        const req = promotionRequirement(t);
+        return `
         <article class="item">
           <div class="item-top">
-            <div><h3>${t.name} · ${t.title}</h3><div class="meta">${t.disciplineName} · 教学 ${t.teaching} · 科研 ${t.research} · 晋升点 ${t.promotion}</div></div>
+            <div><h3>${t.name} · ${t.title} → ${req.to}</h3><div class="meta">${t.disciplineName} · ${t.majorName || "不限专业"} · 教学 ${t.teaching} · 科研 ${t.research} · 论文 ${t.papers || 0} · 晋升点 ${t.promotion}</div></div>
             <span class="pill">${money(t.salary)}/年</span>
           </div>
           <div class="actions"><button class="ghost" onclick="promoteTeacher('${t.id}')">申请晋升</button></div>
         </article>
-      `).join("")}
+      `;}).join("") || `<p class="meta">暂无符合晋升条件的教师。教师需要满足教学、科研、论文和晋升点要求。</p>`}
     </div>
   `;
+  syncJobMajorOptions();
 }
 
 function renderPost(post) {
+  const remaining = Math.max(0, (post.positions || 1) - (post.hiredCount || 0));
   return `
     <article class="item">
       <div class="item-top">
-        <div><h3>${post.title}</h3><div class="meta">${post.discipline} · ${post.level} · ${post.status}</div></div>
+        <div><h3>${post.title}</h3><div class="meta">${post.discipline} · ${post.majorName || "不限专业"} · ${post.level} · ${post.status}</div><div class="meta">岗位 ${post.positions || 1} 个 · 已录用 ${post.hiredCount || 0} 人 · 剩余 ${remaining} 个</div></div>
         <span class="pill">${post.applications.length}份简历</span>
       </div>
       <div class="list" style="margin-top:10px">
@@ -352,7 +565,7 @@ function renderPost(post) {
               <span class="pill ${app.status === "待筛选" ? "warn" : ""}">${app.status}</span>
             </div>
             <div class="actions">
-              <button class="primary" ${app.status !== "待筛选" ? "disabled" : ""} onclick="hireApplication('${post.id}', '${app.id}')">录用</button>
+              <button class="primary" ${app.status !== "待筛选" || remaining <= 0 ? "disabled" : ""} onclick="hireApplication('${post.id}', '${app.id}')">录用</button>
               <button class="ghost" ${app.status !== "待筛选" ? "disabled" : ""} onclick="rejectApplication('${post.id}', '${app.id}')">不合适</button>
             </div>
           </div>
@@ -389,21 +602,21 @@ function renderResearch() {
         <h3>科研项目</h3>
         <p class="meta">教师主动提交课题，学校审核后投入经费并跟踪成果。</p>
         <div class="list compact-list">
-          ${researchProjects.map(projectCard).join("") || `<p class="meta">暂无科研项目申请。</p>`}
+          ${researchProjects.slice(0, 5).map(projectCard).join("") || `<p class="meta">暂无科研项目申请。</p>`}
         </div>
       </section>
       <section class="research-section">
         <h3>横向项目</h3>
         <p class="meta">面向企业合作和社会服务，完成后获得到账收入与声望。</p>
         <div class="list compact-list">
-          ${horizontalProjects.map(projectCard).join("") || `<p class="meta">暂无横向项目申请。</p>`}
+          ${horizontalProjects.slice(0, 5).map(projectCard).join("") || `<p class="meta">暂无横向项目申请。</p>`}
         </div>
       </section>
     </div>
     <section class="research-section">
       <h3>论文与成果</h3>
       <div class="list compact-list">
-        ${state.data.papers.slice(0, 6).map((p) => `
+        ${state.data.papers.slice(0, 5).map((p) => `
           <article class="proposal-row">
             <div class="item-top">
               <div><h3>${p.title}</h3><div class="meta">${p.level} · ${p.discipline} · 作者 ${p.teacherName} · 影响力 +${p.impact}</div></div>
@@ -438,16 +651,27 @@ function renderRanking() {
 
 function renderFinance() {
   const d = state.data;
-  const stockValue = d.stockShares * d.stockPrice;
+  const stockValue = d.stocks.reduce((sum, stock) => sum + stock.shares * stock.price, 0);
   const loanTotal = d.loans.reduce((sum, loan) => sum + loan.balance, 0);
   view.innerHTML = `
     <div class="section-head"><div><p class="eyebrow">资金运作</p><h2>贷款与投资</h2></div></div>
     <div class="market-grid">
       <div class="market-box"><p class="eyebrow">贷款余额</p><h3>${money(loanTotal)}</h3><div class="meta">每学期结算利息，适合短期扩建。</div></div>
-      <div class="market-box"><p class="eyebrow">股票持仓</p><h3>${d.stockShares} 股</h3><div class="meta">现价 ${money(d.stockPrice)} · 市值 ${money(stockValue)}</div></div>
+      <div class="market-box"><p class="eyebrow">股票市值</p><h3>${money(stockValue)}</h3><div class="meta">按企业分别买卖，价格每月波动。</div></div>
     </div>
     <div class="item" style="margin-top:10px"><h3>学校贷款</h3><div class="actions"><button class="primary" onclick="takeLoan(100000)">贷款 ${money(100000)}</button><button class="secondary" onclick="takeLoan(300000)">贷款 ${money(300000)}</button><button class="ghost" onclick="repayLoan(100000)">还款 ${money(100000)}</button></div></div>
-    <div class="item"><h3>股票投资</h3><div class="meta">股票价格会随月份波动，风险自担。</div><div class="actions"><button class="primary" onclick="buyStock(10)">买入 10 股</button><button class="secondary" onclick="buyStock(50)">买入 50 股</button><button class="ghost" onclick="sellStock(10)">卖出 10 股</button><button class="ghost" onclick="sellStock(50)">卖出 50 股</button></div></div>
+    <h3 style="margin-top:14px">股票投资</h3>
+    <div class="list compact-list">
+      ${d.stocks.map((stock) => `
+        <article class="proposal-row">
+          <div class="item-top">
+            <div><h3>${stock.name}</h3><div class="meta">当前股价 ${money(stock.price)} · 风险 ${stock.risk} · 持仓 ${stock.shares} 股 · 市值 ${money(stock.shares * stock.price)}</div></div>
+            <span class="pill">${stock.price >= stock.basePrice ? "上涨" : "波动"}</span>
+          </div>
+          <div class="actions"><button class="primary" onclick="buyStock('${stock.id}', 10)">买入10股</button><button class="secondary" onclick="buyStock('${stock.id}', 50)">买入50股</button><button class="ghost" onclick="sellStock('${stock.id}', 10)">卖出10股</button><button class="ghost" onclick="sellStock('${stock.id}', 50)">卖出50股</button></div>
+        </article>
+      `).join("")}
+    </div>
     <h3 style="margin-top:14px">财务流水</h3>
     <div class="list compact-list">
       ${d.finance.slice(0, 5).map(renderFinanceRow).join("") || `<p class="meta">暂无财务流水。</p>`}
@@ -470,6 +694,60 @@ function renderEvent() {
   $("#eventTitle").textContent = event.title;
   $("#eventBody").textContent = event.body;
   $("#eventChoices").innerHTML = event.choices.map((choice, index) => `<button class="primary" onclick="decideEvent(${index})">${choice.text}</button>`).join("");
+}
+
+function renderSaveContent() {
+  if (!saveContent) return;
+  if (!state.data) {
+    saveContent.innerHTML = `
+      <div class="save-note">
+        <h3>暂无存档</h3>
+        <p class="meta">当前旧存档已按要求清零。创建学校后会生成新的浏览器本地存档。</p>
+      </div>
+    `;
+    return;
+  }
+  const d = state.data;
+  const m = metrics();
+  saveContent.innerHTML = `
+    <div class="save-note">
+      <h3>${d.schoolName} · ${currentSchoolLevel().name}</h3>
+      <p class="meta">${d.address} · 第${d.year}学年${d.month}月 · 最后保存：${d.savedAt || "当前会话"}</p>
+    </div>
+    <div class="save-summary">
+      <div class="stat"><span>资金</span><b>${money(d.money)}</b></div>
+      <div class="stat"><span>声望</span><b>${d.reputation}</b></div>
+      <div class="stat"><span>学生</span><b>${m.students}</b></div>
+      <div class="stat"><span>教师</span><b>${m.teachers}</b></div>
+    </div>
+  `;
+}
+
+function openSaveModal() {
+  renderSaveContent();
+  $("#saveModal").hidden = false;
+}
+
+function closeSaveModal() {
+  $("#saveModal").hidden = true;
+}
+
+function manualSave() {
+  if (!state.data) return msg("暂无可保存的游戏。", true);
+  save();
+  renderSaveContent();
+  msg("当前进度已保存。");
+}
+
+function clearSave() {
+  localStorage.removeItem(SAVE_KEY);
+  OLD_SAVE_KEYS.forEach((key) => localStorage.removeItem(key));
+  state.data = null;
+  state.tab = "campus";
+  if (state.timer) clearInterval(state.timer);
+  $("#saveModal").hidden = true;
+  render();
+  setSpeed("pause");
 }
 
 function render() {
@@ -500,6 +778,17 @@ function createSchool() {
   setSpeed(state.speed);
 }
 
+function upgradeSchoolLevel() {
+  const next = nextSchoolLevel();
+  if (!next) return msg("已达到最高办学层次。");
+  if (!meetsSchoolLevel(next)) return msg(`升格条件不足：${levelRequirementText(next)}。`, true);
+  state.data.schoolLevelIndex += 1;
+  state.data.reputation = clamp(state.data.reputation + 3, 0, 100);
+  addFinance("记录", "办学层次升格", 0, `升格为${next.name}`);
+  save();
+  render();
+}
+
 function buildPlace(id) {
   const b = state.data.buildings.find((item) => item.id === id);
   const cost = Math.round(b.baseCost * (1 + b.quantity * 0.18));
@@ -522,21 +811,37 @@ function upgradePlace(id) {
 }
 
 function fillCollegePreset() {
-  const item = COLLEGES.find((college) => college.name === $("#collegePreset").value);
-  if (!item) return;
-  $("#newDiscipline").value = item.name;
+  const value = $("#collegePreset").value;
+  const custom = value === "__custom__";
+  $("#customCollegeFields").hidden = !custom;
+  if (custom) {
+    $("#majorPreview").innerHTML = `<span class="meta">填写自定义学院和专业后开设，默认适配当前办学层次。</span>`;
+    return;
+  }
+  const item = COLLEGES.find((college) => college.name === value);
+  if (!item) {
+    $("#majorPreview").innerHTML = `<span class="meta">选择学院后，这里会逐条列出专业。</span>`;
+    return;
+  }
   $("#majorPreview").innerHTML = item.majors.map((major) => `<div class="major-row">${major}</div>`).join("");
 }
 
 function openDiscipline() {
-  const preset = COLLEGES.find((college) => college.name === $("#collegePreset").value);
-  const name = ($("#newDiscipline").value || preset?.name || "").trim();
+  const value = $("#collegePreset").value;
+  const isCustom = value === "__custom__";
+  const preset = COLLEGES.find((college) => college.name === value);
+  if (!isCustom && preset && (state.data.schoolLevelIndex || 0) < collegeMinLevel(preset)) {
+    return msg(`办学层次不足，需要达到${SCHOOL_LEVELS[collegeMinLevel(preset)].name}。`, true);
+  }
+  const name = (isCustom ? $("#customCollegeName").value : preset?.name || "").trim();
   if (!name) return msg("请选择或输入学院名称。", true);
   if (state.data.disciplines.some((d) => d.name === name)) return msg("该学院已存在。", true);
-  const majors = preset?.majors || [];
+  const majors = isCustom
+    ? $("#customCollegeMajors").value.split(/[、,，]/).map((item) => item.trim()).filter(Boolean).slice(0, 6)
+    : preset?.majors || [];
   const cost = 180000 + Math.max(0, majors.length - 1) * 25000;
   if (!spend(cost, "学科建设", `开设${name}`)) return;
-  const discipline = { id: uid(), name, degreeLevel: "本科", rank: 260, strength: 24, research: 10 };
+  const discipline = { id: uid(), name, degreeLevel: (state.data.schoolLevelIndex || 0) >= 1 ? "本科" : "专科", rank: 260, strength: 24, research: 10 };
   state.data.disciplines.push(discipline);
   majors.forEach((major) => state.data.majors.push({ id: uid(), disciplineId: discipline.id, disciplineName: name, name: major, students: 0, quality: 50 }));
   save();
@@ -556,8 +861,17 @@ function investDiscipline(id, amount) {
 
 function applyDegree(id, degreeType) {
   const d = state.data.disciplines.find((item) => item.id === id);
-  const cost = degreeType === "硕士点" ? 90000 : 180000;
-  if (!spend(cost, "硕博点申请", `${d.name}申请${degreeType}`)) return;
+  const req = degreeRequirement(degreeType);
+  const dm = disciplineMetrics(d);
+  const missing = [];
+  if (dm.students < req.students) missing.push(`学生${req.students}人`);
+  if (dm.teachers < req.teachers) missing.push(`教师${req.teachers}人`);
+  if (dm.professors < req.professors) missing.push(`教授${req.professors}人`);
+  if (dm.papers < req.papers) missing.push(`论文/成果${req.papers}项`);
+  if (d.research < req.research) missing.push(`科研${req.research}`);
+  if (d.strength < req.strength) missing.push(`实力${req.strength}`);
+  if (missing.length) return msg(`申请条件不足：${missing.join("、")}。`, true);
+  if (!spend(req.money, "硕博点申请", `${d.name}申请${degreeType}`)) return;
   const score = Math.round(d.strength * 0.55 + d.research * 0.8 + Math.random() * 12);
   const need = degreeType === "硕士点" ? 48 : 82;
   if (score >= need) {
@@ -574,14 +888,21 @@ function applyDegree(id, degreeType) {
 }
 
 function createJobPost() {
+  rememberTalentSelections();
   const title = $("#jobTitle").value || "教师招聘公告";
   const discipline = $("#jobDiscipline").value;
+  const major = state.data.majors.find((m) => m.id === $("#jobMajor").value);
   const level = $("#jobLevel").value;
   const salary = Number($("#jobSalary").value || 120000);
   const budget = Number($("#jobBudget").value || 25000);
+  const positions = clamp(Number($("#jobPositions").value || 1), 1, 12);
+  const currentTeachers = state.data.teachers.filter((t) => t.disciplineName === discipline && (!major || t.majorName === major.name)).length;
+  const studentLoad = state.data.majors.filter((m) => m.disciplineName === discipline && (!major || m.id === major.id)).reduce((sum, m) => sum + m.students, 0);
+  const maxByNeed = Math.max(1, Math.ceil(studentLoad / 120) + 2);
+  if (currentTeachers + positions > maxByNeed) return msg(`该学院/专业当前最多还需要${Math.max(0, maxByNeed - currentTeachers)}名教师。`, true);
   if (!spend(budget, "招聘公告", `发布${discipline}${level}招聘`)) return;
   const bias = { 普通: 0, 优秀: 12, 杰出: 25 }[level] || 0;
-  const applications = Array.from({ length: 5 + Math.floor(Math.random() * 3) }, () => {
+  const applications = Array.from({ length: Math.max(5, positions * 3) + Math.floor(Math.random() * 3) }, () => {
     const teaching = clamp(42 + Math.floor(Math.random() * 38) + bias, 30, 99);
     const research = clamp(38 + Math.floor(Math.random() * 42) + bias, 30, 99);
     return {
@@ -590,13 +911,14 @@ function createJobPost() {
       title: level === "杰出" ? "教授" : level === "优秀" ? "副教授" : "讲师",
       teaching,
       research,
+      papers: level === "杰出" ? 5 + Math.floor(Math.random() * 5) : level === "优秀" ? 1 + Math.floor(Math.random() * 4) : Math.floor(Math.random() * 2),
       fit: clamp(Math.round((teaching + research) / 2 + Math.random() * 12), 35, 99),
       salary: Math.round(salary * (0.9 + Math.random() * 0.3)),
       status: "待筛选",
       bio: "教师主动投递简历，适合补充学院方向。",
     };
   });
-  state.data.jobPosts.unshift({ id: uid(), title, discipline, level, status: "开放", applications });
+  state.data.jobPosts.unshift({ id: uid(), title, discipline, majorId: major?.id || "", majorName: major?.name || "不限专业", level, positions, hiredCount: 0, status: "开放", applications });
   save();
   render();
 }
@@ -609,12 +931,17 @@ function randomName() {
 
 function hireApplication(postId, appId) {
   const post = state.data.jobPosts.find((item) => item.id === postId);
+  if ((post.hiredCount || 0) >= (post.positions || 1)) return msg("该招聘公告岗位已录满。", true);
   const app = post.applications.find((item) => item.id === appId);
   const onboarding = Math.max(12000, Math.round(app.salary * 0.18));
   if (!spend(onboarding, "教师录用", `录用${app.name}`)) return;
-  state.data.teachers.push({ id: uid(), name: app.name, title: app.title, disciplineName: post.discipline, teaching: app.teaching, research: app.research, salary: app.salary, promotion: 0 });
-  post.status = "已关闭";
-  post.applications.forEach((item) => item.status = item.id === appId ? "已录用" : "未录用");
+  state.data.teachers.push({ id: uid(), name: app.name, title: app.title, disciplineName: post.discipline, majorName: post.majorName === "不限专业" ? "" : post.majorName, teaching: app.teaching, research: app.research, salary: app.salary, promotion: 0, papers: app.papers || 0 });
+  app.status = "已录用";
+  post.hiredCount = (post.hiredCount || 0) + 1;
+  if (post.hiredCount >= post.positions) {
+    post.status = "已关闭";
+    post.applications.filter((item) => item.status === "待筛选").forEach((item) => item.status = "未录用");
+  }
   state.data.teacherLevel = clamp(state.data.teacherLevel + 2, 0, 100);
   save();
   render();
@@ -628,6 +955,7 @@ function rejectApplication(postId, appId) {
 }
 
 function recruitStudents() {
+  rememberTalentSelections();
   const major = state.data.majors.find((m) => m.id === $("#studentMajor").value);
   const level = $("#studentLevel").value;
   const count = Number($("#studentCount").value || 40);
@@ -641,15 +969,12 @@ function recruitStudents() {
 
 function promoteTeacher(id) {
   const t = state.data.teachers.find((item) => item.id === id);
-  const ladder = ["讲师", "副教授", "教授", "杰出教授"];
-  const index = ladder.indexOf(t.title);
-  if (index < 0 || index >= ladder.length - 1) return msg("该教师已达到最高职级。", true);
-  const need = [20, 55, 100][index];
-  if (t.promotion < need) return msg(`晋升点不足，需要${need}点。`, true);
-  const cost = [30000, 70000, 140000][index];
-  if (!spend(cost, "教师晋升", `${t.name}晋升`)) return;
-  t.title = ladder[index + 1];
-  t.promotion -= need;
+  const req = promotionRequirement(t);
+  if (!req) return msg("该教师已达到最高职级。", true);
+  if (!isPromotionEligible(t)) return msg(`晋升条件不足：晋升点${req.points} · 教学${req.teaching} · 科研${req.research} · 论文${req.papers}。`, true);
+  if (!spend(req.cost, "教师晋升", `${t.name}晋升${req.to}`)) return;
+  t.title = req.to;
+  t.promotion -= req.points;
   t.teaching += 4;
   t.research += 5;
   save();
@@ -722,7 +1047,10 @@ function progressProjects() {
       state.data.reputation = clamp(state.data.reputation + p.reputation, 0, 100);
       if (p.type === "科研") state.data.papersCount += 1;
       const teacher = state.data.teachers.find((t) => t.id === p.teacherId);
-      if (teacher) teacher.promotion += p.gain;
+      if (teacher) {
+        teacher.promotion += p.gain;
+        teacher.papers = (teacher.papers || 0) + 1;
+      }
       state.data.papers.unshift({
         id: uid(),
         title: p.type === "科研" ? `${p.name}阶段性研究` : `${p.name}应用成果报告`,
@@ -768,27 +1096,34 @@ function repayLoan(amount) {
   render();
 }
 
-function buyStock(shares) {
-  const cost = shares * state.data.stockPrice;
-  if (!spend(cost, "股票投资", `买入${shares}股校园发展指数`)) return;
-  state.data.stockShares += shares;
+function buyStock(stockId, shares) {
+  const stock = state.data.stocks.find((item) => item.id === stockId);
+  if (!stock) return;
+  const cost = shares * stock.price;
+  if (!spend(cost, "股票投资", `买入${shares}股${stock.name}`)) return;
+  stock.shares += shares;
   save();
   render();
 }
 
-function sellStock(shares) {
-  const count = Math.min(shares, state.data.stockShares);
+function sellStock(stockId, shares) {
+  const stock = state.data.stocks.find((item) => item.id === stockId);
+  if (!stock) return;
+  const count = Math.min(shares, stock.shares);
   if (!count) return msg("当前没有足够股票。", true);
-  state.data.stockShares -= count;
-  income(count * state.data.stockPrice, "股票卖出", `卖出${count}股校园发展指数`);
+  stock.shares -= count;
+  income(count * stock.price, "股票卖出", `卖出${count}股${stock.name}`);
   save();
   render();
 }
 
 
 function updateStockPrice() {
-  const drift = 1 + (Math.random() - 0.45) * 0.12;
-  state.data.stockPrice = clamp(Math.round(state.data.stockPrice * drift), 45, 260);
+  state.data.stocks.forEach((stock) => {
+    const swing = stock.risk === "稳健" ? 0.07 : stock.risk === "成长" ? 0.12 : 0.18;
+    const drift = 1 + (Math.random() - 0.47) * swing;
+    stock.price = clamp(Math.round(stock.price * drift), 20, 420);
+  });
 }
 
 function recalcRank() {
@@ -836,11 +1171,12 @@ function closeEventModal() {
 }
 
 function setSpeed(speed) {
+  if (speed === "slow") speed = "normal";
   state.speed = speed;
   localStorage.setItem(SPEED_KEY, speed);
   document.querySelectorAll(".speed").forEach((btn) => btn.classList.toggle("active", btn.dataset.speed === speed));
   if (state.timer) clearInterval(state.timer);
-  const map = { pause: 0, slow: 30000, normal: 15000, fast: 5000 };
+  const map = { pause: 0, normal: 15000, fast: 5000 };
   if (map[speed]) state.timer = setInterval(() => advanceTime(1), map[speed]);
 }
 
@@ -851,11 +1187,17 @@ document.querySelectorAll(".tab").forEach((btn) => {
   });
 });
 document.querySelectorAll(".speed").forEach((btn) => btn.addEventListener("click", () => setSpeed(btn.dataset.speed)));
-$("#advanceBtn").addEventListener("click", () => state.data && advanceTime(1));
+$("#openSaveBtn").addEventListener("click", openSaveModal);
+$("#closeSaveBtn").addEventListener("click", closeSaveModal);
+$("#manualSaveBtn").addEventListener("click", manualSave);
+$("#clearSaveBtn").addEventListener("click", clearSave);
 $("#closeEventBtn").addEventListener("click", closeEventModal);
 $("#laterEventBtn").addEventListener("click", closeEventModal);
 $("#eventModal").addEventListener("click", (event) => {
   if (event.target.id === "eventModal") closeEventModal();
+});
+$("#saveModal").addEventListener("click", (event) => {
+  if (event.target.id === "saveModal") closeSaveModal();
 });
 
 loadSave();
