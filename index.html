@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>大学模拟发展</title>
+  <link rel="stylesheet" href="app.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#7b3fc7">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="topbar">
+      <div class="brand-panel">
+        <div class="brand">
+          <div class="school-logo" id="schoolLogo">校</div>
+          <div>
+            <p class="eyebrow" id="schoolAddress">创建学校</p>
+            <h1 id="schoolName">大学模拟发展</h1>
+          </div>
+        </div>
+        <section class="timebar">
+          <span>时间速度</span>
+          <button class="ghost small speed active" data-speed="pause">暂停</button>
+          <button class="ghost small speed" data-speed="slow">慢速</button>
+          <button class="ghost small speed" data-speed="normal">正常</button>
+          <button class="ghost small speed" data-speed="fast">快速</button>
+        </section>
+      </div>
+      <button id="advanceBtn" class="primary small">推进1月</button>
+    </section>
+
+    <section class="status-grid" id="statusGrid"></section>
+    <section class="notice" id="notice" hidden></section>
+    <section class="panel" id="view"></section>
+
+    <nav class="tabbar" aria-label="功能导航">
+      <button class="tab active" data-tab="campus">校园</button>
+      <button class="tab" data-tab="disciplines">学科</button>
+      <button class="tab" data-tab="talent">人才</button>
+      <button class="tab" data-tab="research">科研</button>
+      <button class="tab" data-tab="ranking">排名</button>
+    </nav>
+  </main>
+
+  <div class="event-modal" id="eventModal" hidden>
+    <div class="event-card">
+      <div class="event-card-head">
+        <p class="eyebrow">校园事件</p>
+        <button class="icon-button" id="closeEventBtn" aria-label="关闭校园事件弹窗">×</button>
+      </div>
+      <h2 id="eventTitle"></h2>
+      <p id="eventBody"></p>
+      <div id="eventChoices" class="choice-list"></div>
+      <button class="ghost full-width" id="laterEventBtn">稍后处理</button>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
