@@ -16,18 +16,17 @@
           <div class="school-logo" id="schoolLogo">校</div>
           <div class="brand-main">
             <p class="eyebrow" id="schoolAddress">创建学校</p>
-            <h1 id="schoolName">大学模拟发展</h1>
-            <section class="timebar">
-              <span>时间速度</span>
-              <button class="ghost small speed active" data-speed="pause">暂停</button>
-              <button class="ghost small speed" data-speed="slow">慢速</button>
-              <button class="ghost small speed" data-speed="normal">正常</button>
-              <button class="ghost small speed" data-speed="fast">快速</button>
-            </section>
+            <h1><span id="schoolName">大学模拟发展</span><span class="level-badge" id="schoolLevel">公办专科</span></h1>
           </div>
         </div>
       </div>
-      <button id="advanceBtn" class="primary small">推进1月</button>
+      <section class="timebar">
+        <span>时间速度</span>
+        <button class="ghost small speed active" data-speed="pause">暂停</button>
+        <button class="ghost small speed" data-speed="normal">正常</button>
+        <button class="ghost small speed" data-speed="fast">快速</button>
+        <button class="primary small save-open" id="openSaveBtn">存档</button>
+      </section>
     </section>
 
     <section class="status-grid" id="statusGrid"></section>
@@ -54,6 +53,20 @@
       <p id="eventBody"></p>
       <div id="eventChoices" class="choice-list"></div>
       <button class="ghost full-width" id="laterEventBtn">稍后处理</button>
+    </div>
+  </div>
+
+  <div class="event-modal" id="saveModal" hidden>
+    <div class="event-card save-card">
+      <div class="event-card-head">
+        <p class="eyebrow">存档管理</p>
+        <button class="icon-button" id="closeSaveBtn" aria-label="关闭存档页面">×</button>
+      </div>
+      <div id="saveContent"></div>
+      <div class="actions">
+        <button class="primary" id="manualSaveBtn">保存当前进度</button>
+        <button class="danger" id="clearSaveBtn">清空存档</button>
+      </div>
     </div>
   </div>
 
