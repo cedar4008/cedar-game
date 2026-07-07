@@ -176,7 +176,7 @@ function renderAuth() {
     <section class="setup-card auth-card">
       <p class="eyebrow">账号中心</p>
       <h2>登录或注册账号</h2>
-      <p class="meta">没有账号无法进入游戏。只有账号 <strong>${ADMIN_USERNAME}</strong> 是管理员，管理员资金无限；其他账号注册后可直接登录。当前 GitHub Pages 版账号数据保存在本浏览器本地，不同设备之间不会自动同步。</p>
+      <p class="meta">没有账号无法进入游戏。只有账号 <strong>${ADMIN_USERNAME}</strong> 是管理员，管理员资金无限；其他账号注册后可直接登录。<strong>${ADMIN_USERNAME}</strong> 为保留管理员账号，普通用户不能注册这个账号名。当前 GitHub Pages 版账号数据保存在本浏览器本地，不同设备之间不会自动同步。</p>
       <div class="auth-switch">
         <button class="${state.authMode === "login" ? "primary" : "ghost"}" onclick="switchAuthMode('login')">登录</button>
         <button class="${state.authMode === "register" ? "primary" : "ghost"}" onclick="switchAuthMode('register')">注册</button>
@@ -204,13 +204,13 @@ function registerAccount() {
   if (!username || !password) return msg("请输入账号和密码。", true);
   if (password.length < 4) return msg("密码至少 4 位。", true);
   if (password !== confirm) return msg("两次输入的密码不一致。", true);
+  if (username === ADMIN_USERNAME) return msg(`${ADMIN_USERNAME} 是保留管理员账号，不能通过普通注册创建。`, true);
   if (state.accounts.some((account) => account.username === username)) return msg("该账号已存在。", true);
-  const isAdmin = username === ADMIN_USERNAME;
   const account = {
     id: uid(),
     username,
     password,
-    role: isAdmin ? "admin" : "user",
+    role: "user",
     status: "approved",
     createdAt: nowText(),
     approvedAt: nowText(),
@@ -227,22 +227,9 @@ function registerAccount() {
 function loginAccount() {
   const username = normalizeUsername($("#authUsername")?.value);
   const password = String($("#authPassword")?.value || "");
-  let account = state.accounts.find((item) => item.username === username && item.password === password);
-  if (!account && username === ADMIN_USERNAME && password) {
-    const bootstrap = {
-      id: uid(),
-      username,
-      password,
-      role: "admin",
-      status: "approved",
-      createdAt: nowText(),
-      approvedAt: nowText(),
-    };
-    state.accounts.push(bootstrap);
-    state.accounts = normalizeAccounts(state.accounts);
-    saveAccountsStore();
-    account = state.accounts.find((item) => item.username === username && item.password === password) || bootstrap;
-    msg("管理员账号已在当前设备初始化。");
+  const account = state.accounts.find((item) => item.username === username && item.password === password);
+  if (!account && username === ADMIN_USERNAME) {
+    return msg(`当前 GitHub Pages 版本无法在不同设备共享 ${ADMIN_USERNAME} 管理员账号；这需要后端数据库。`, true);
   }
   if (!account) return msg("账号或密码错误。", true);
   saveSession(account);
