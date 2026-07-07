@@ -179,6 +179,10 @@ h3 { font-size: 16px; margin-bottom: 8px; }
   padding: 10px;
   background: #fff;
 }
+.warn-card {
+  background: #fcf9ff;
+  border-color: #d8c4ee;
+}
 .item-top {
   display: flex;
   align-items: flex-start;
