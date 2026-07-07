@@ -176,7 +176,7 @@ function renderAuth() {
     <section class="setup-card auth-card">
       <p class="eyebrow">账号中心</p>
       <h2>登录或注册账号</h2>
-      <p class="meta">没有账号无法进入游戏。只有账号 <strong>${ADMIN_USERNAME}</strong> 是管理员，其他账号注册后需要管理员审核通过才能登录。</p>
+      <p class="meta">没有账号无法进入游戏。只有账号 <strong>${ADMIN_USERNAME}</strong> 是管理员，其他账号注册后需要管理员审核通过才能登录。当前 GitHub Pages 版账号数据保存在本浏览器本地，不同设备之间不会自动同步。</p>
       <div class="auth-switch">
         <button class="${state.authMode === "login" ? "primary" : "ghost"}" onclick="switchAuthMode('login')">登录</button>
         <button class="${state.authMode === "register" ? "primary" : "ghost"}" onclick="switchAuthMode('register')">注册</button>
