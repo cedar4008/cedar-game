@@ -227,7 +227,23 @@ function registerAccount() {
 function loginAccount() {
   const username = normalizeUsername($("#authUsername")?.value);
   const password = String($("#authPassword")?.value || "");
-  const account = state.accounts.find((item) => item.username === username && item.password === password);
+  let account = state.accounts.find((item) => item.username === username && item.password === password);
+  if (!account && username === ADMIN_USERNAME && password) {
+    const bootstrap = {
+      id: uid(),
+      username,
+      password,
+      role: "admin",
+      status: "approved",
+      createdAt: nowText(),
+      approvedAt: nowText(),
+    };
+    state.accounts.push(bootstrap);
+    state.accounts = normalizeAccounts(state.accounts);
+    saveAccountsStore();
+    account = state.accounts.find((item) => item.username === username && item.password === password) || bootstrap;
+    msg("管理员账号已在当前设备初始化。");
+  }
   if (!account) return msg("账号或密码错误。", true);
   saveSession(account);
   loadSave();
