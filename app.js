@@ -148,9 +148,9 @@ function normalizeAccounts(accounts) {
       username,
       password: String(account.password || ""),
       role: isAdmin ? "admin" : "user",
-      status: isAdmin ? "approved" : (account.status || "pending"),
+      status: "approved",
       createdAt: account.createdAt || nowText(),
-      approvedAt: isAdmin ? (account.approvedAt || account.createdAt || nowText()) : (account.approvedAt || ""),
+      approvedAt: account.approvedAt || account.createdAt || nowText(),
     };
   });
 }
@@ -176,7 +176,7 @@ function renderAuth() {
     <section class="setup-card auth-card">
       <p class="eyebrow">账号中心</p>
       <h2>登录或注册账号</h2>
-      <p class="meta">没有账号无法进入游戏。只有账号 <strong>${ADMIN_USERNAME}</strong> 是管理员，其他账号注册后需要管理员审核通过才能登录。当前 GitHub Pages 版账号数据保存在本浏览器本地，不同设备之间不会自动同步。</p>
+      <p class="meta">没有账号无法进入游戏。只有账号 <strong>${ADMIN_USERNAME}</strong> 是管理员，管理员资金无限；其他账号注册后可直接登录。当前 GitHub Pages 版账号数据保存在本浏览器本地，不同设备之间不会自动同步。</p>
       <div class="auth-switch">
         <button class="${state.authMode === "login" ? "primary" : "ghost"}" onclick="switchAuthMode('login')">登录</button>
         <button class="${state.authMode === "register" ? "primary" : "ghost"}" onclick="switchAuthMode('register')">注册</button>
@@ -211,23 +211,17 @@ function registerAccount() {
     username,
     password,
     role: isAdmin ? "admin" : "user",
-    status: isAdmin ? "approved" : "pending",
+    status: "approved",
     createdAt: nowText(),
-    approvedAt: isAdmin ? nowText() : "",
+    approvedAt: nowText(),
   };
   state.accounts.push(account);
   state.accounts = normalizeAccounts(state.accounts);
   saveAccountsStore();
-  if (isAdmin) {
-    saveSession(account);
-    loadSave();
-    render();
-    setSpeed(state.speed);
-    return;
-  }
-  msg("注册成功，等待管理员审核通过后才能登录。");
-  state.authMode = "login";
+  saveSession(account);
+  loadSave();
   render();
+  setSpeed(state.speed);
 }
 
 function loginAccount() {
@@ -235,7 +229,6 @@ function loginAccount() {
   const password = String($("#authPassword")?.value || "");
   const account = state.accounts.find((item) => item.username === username && item.password === password);
   if (!account) return msg("账号或密码错误。", true);
-  if (account.status !== "approved") return msg("该账号尚未通过管理员审核。", true);
   saveSession(account);
   loadSave();
   render();
@@ -259,7 +252,7 @@ function initApp() {
   saveAccountsStore();
   loadSession();
   const currentAccount = state.accounts.find((account) => account.username === state.session?.username);
-  if (!currentAccount || currentAccount.status !== "approved" || (currentAccount.role === "admin" && currentAccount.username !== ADMIN_USERNAME)) {
+  if (!currentAccount || (currentAccount.role === "admin" && currentAccount.username !== ADMIN_USERNAME)) {
     saveSession(null);
   } else if (currentAccount) {
     saveSession(currentAccount);
