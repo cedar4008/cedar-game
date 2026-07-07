@@ -58,6 +58,7 @@ function normalizeAccounts(accounts) {
 function render() {
   const session = loadSession();
   const accounts = loadAccounts();
+  const pendingAccounts = accounts.filter((account) => account.status === "pending");
   if (!session || session.role !== "admin" || session.username !== ADMIN_USERNAME) {
     root.innerHTML = `
       <div class="section-head"><div><p class="eyebrow">账号管理</p><h2>仅管理员可访问</h2></div></div>
@@ -80,10 +81,16 @@ function render() {
         <button class="ghost" onclick="logout()">退出登录</button>
       </div>
     </div>
+    <div class="item warn-card">
+      <h3>数据说明</h3>
+      <p class="meta">当前 GitHub Pages 版本的账号和审核数据保存在本浏览器本地。</p>
+      <p class="meta">如果你是在另一台手机、电脑、浏览器，或无痕模式里注册账号，这个管理员页面不会显示那条待审核记录。</p>
+      <p class="meta">当前浏览器账号总数：${accounts.length}，待审核数量：${pendingAccounts.length}</p>
+    </div>
     <div class="item">
       <h3>待审核账号</h3>
       <div class="account-list">
-        ${accounts.filter((account) => account.status === "pending").map((account) => `
+        ${pendingAccounts.map((account) => `
           <div class="account-row">
             <div class="item-top">
               <div>
@@ -99,7 +106,7 @@ function render() {
               <button class="danger" onclick="deleteAccount('${account.id}')">删除账号</button>
             </div>
           </div>
-        `).join("") || '<p class="meta">暂无待审核账号。</p>'}
+        `).join("") || '<p class="meta">暂无待审核账号。若账号是在别的设备或别的浏览器注册，这里不会显示。</p>'}
       </div>
     </div>
     <div class="item">
