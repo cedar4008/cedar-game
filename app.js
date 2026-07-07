@@ -4,6 +4,7 @@ const SAVE_RESET_KEY = "cedar_game_reset_20260707_school_year_v2";
 const SPEED_KEY = "cedar_game_speed";
 const ACCOUNTS_KEY = "cedar_game_accounts_v1";
 const SESSION_KEY = "cedar_game_session_v1";
+const ADMIN_USERNAME = "cedar004";
 
 const ADDRESSES = [
   "沿海开放城市",
@@ -114,7 +115,7 @@ function currentSaveKey() {
 }
 
 function isAdminUser() {
-  return state.session?.role === "admin";
+  return state.session?.role === "admin" && state.session?.username === ADMIN_USERNAME;
 }
 
 function displayMoney(value) {
@@ -134,6 +135,26 @@ function saveAccountsStore() {
   localStorage.setItem(ACCOUNTS_KEY, JSON.stringify(state.accounts));
 }
 
+function normalizeUsername(value) {
+  return String(value || "").trim().toLowerCase().slice(0, 24);
+}
+
+function normalizeAccounts(accounts) {
+  return accounts.map((account) => {
+    const username = normalizeUsername(account.username);
+    const isAdmin = username === ADMIN_USERNAME;
+    return {
+      id: account.id || uid(),
+      username,
+      password: String(account.password || ""),
+      role: isAdmin ? "admin" : "user",
+      status: isAdmin ? "approved" : (account.status || "pending"),
+      createdAt: account.createdAt || nowText(),
+      approvedAt: isAdmin ? (account.approvedAt || account.createdAt || nowText()) : (account.approvedAt || ""),
+    };
+  });
+}
+
 function loadSession() {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
@@ -144,7 +165,7 @@ function loadSession() {
 }
 
 function saveSession(account) {
-  state.session = account ? { username: account.username, role: account.role } : null;
+  state.session = account ? { username: normalizeUsername(account.username), role: account.role } : null;
   if (state.session) localStorage.setItem(SESSION_KEY, JSON.stringify(state.session));
   else localStorage.removeItem(SESSION_KEY);
 }
@@ -155,7 +176,7 @@ function renderAuth() {
     <section class="setup-card auth-card">
       <p class="eyebrow">账号中心</p>
       <h2>登录或注册账号</h2>
-      <p class="meta">没有账号无法进入游戏。第一个注册的账号自动成为管理员，管理员拥有无限资金并可进入账号管理页。</p>
+      <p class="meta">没有账号无法进入游戏。只有账号 <strong>${ADMIN_USERNAME}</strong> 是管理员，其他账号注册后需要管理员审核通过才能登录。</p>
       <div class="auth-switch">
         <button class="${state.authMode === "login" ? "primary" : "ghost"}" onclick="switchAuthMode('login')">登录</button>
         <button class="${state.authMode === "register" ? "primary" : "ghost"}" onclick="switchAuthMode('register')">注册</button>
@@ -176,10 +197,6 @@ function switchAuthMode(mode) {
   render();
 }
 
-function normalizeUsername(value) {
-  return String(value || "").trim().slice(0, 24);
-}
-
 function registerAccount() {
   const username = normalizeUsername($("#authUsername")?.value);
   const password = String($("#authPassword")?.value || "");
@@ -188,12 +205,28 @@ function registerAccount() {
   if (password.length < 4) return msg("密码至少 4 位。", true);
   if (password !== confirm) return msg("两次输入的密码不一致。", true);
   if (state.accounts.some((account) => account.username === username)) return msg("该账号已存在。", true);
-  const role = state.accounts.length === 0 ? "admin" : "user";
-  const account = { id: uid(), username, password, role, createdAt: nowText() };
+  const isAdmin = username === ADMIN_USERNAME;
+  const account = {
+    id: uid(),
+    username,
+    password,
+    role: isAdmin ? "admin" : "user",
+    status: isAdmin ? "approved" : "pending",
+    createdAt: nowText(),
+    approvedAt: isAdmin ? nowText() : "",
+  };
   state.accounts.push(account);
+  state.accounts = normalizeAccounts(state.accounts);
   saveAccountsStore();
-  saveSession(account);
-  loadSave();
+  if (isAdmin) {
+    saveSession(account);
+    loadSave();
+    render();
+    setSpeed(state.speed);
+    return;
+  }
+  msg("注册成功，等待管理员审核通过后才能登录。");
+  state.authMode = "login";
   render();
 }
 
@@ -202,6 +235,7 @@ function loginAccount() {
   const password = String($("#authPassword")?.value || "");
   const account = state.accounts.find((item) => item.username === username && item.password === password);
   if (!account) return msg("账号或密码错误。", true);
+  if (account.status !== "approved") return msg("该账号尚未通过管理员审核。", true);
   saveSession(account);
   loadSave();
   render();
@@ -221,8 +255,15 @@ function openAccountManager() {
 }
 
 function initApp() {
-  state.accounts = loadAccounts();
+  state.accounts = normalizeAccounts(loadAccounts());
+  saveAccountsStore();
   loadSession();
+  const currentAccount = state.accounts.find((account) => account.username === state.session?.username);
+  if (!currentAccount || currentAccount.status !== "approved" || (currentAccount.role === "admin" && currentAccount.username !== ADMIN_USERNAME)) {
+    saveSession(null);
+  } else if (currentAccount) {
+    saveSession(currentAccount);
+  }
   loadSave();
   render();
   setSpeed(state.speed);
