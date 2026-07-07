@@ -565,9 +565,10 @@ function holdGraduationCeremony() {
     state.data.graduationHistory.unshift({ id: uid(), year: state.data.year, count: graduates, at: nowText() });
     state.data.reputation = clamp(state.data.reputation + Math.max(1, Math.floor(graduates / 180)), 0, 100);
     state.data.satisfaction = clamp(state.data.satisfaction + 1, 0, 100);
-    addFinance("记录", "毕业典礼", 0, `${graduates}名大四学生毕业`);
+    addFinance("??", "????", 0, graduates + "??????????");
   }
   refreshStudentTotals();
+  return graduates;
 }
 
 function advanceAcademicYear() {
@@ -580,31 +581,37 @@ function advanceAcademicYear() {
 
 function enrollPendingAdmissions() {
   const pending = state.data.pendingAdmissions || [];
-  if (!pending.length) return;
+  if (!pending.length) return 0;
+  let enrolled = 0;
   pending.forEach((plan) => {
     const major = state.data.majors.find((item) => item.id === plan.majorId);
     if (!major) return;
     major.cohorts ||= [];
     major.cohorts.push({ grade: 1, count: plan.count, quality: plan.quality });
     major.quality = Math.round((major.quality + plan.quality) / 2);
-    income(plan.count * state.data.tuition.undergrad, "新生学费", `${major.name}${plan.count}名大一新生入校`);
+    enrolled += plan.count;
+    income(plan.count * state.data.tuition.undergrad, "??????", `${major.name}${plan.count}???????????`);
   });
   state.data.pendingAdmissions = [];
   refreshStudentTotals();
+  return enrolled;
 }
 
 function enrollPendingGradAdmissions() {
   const pending = state.data.pendingGradAdmissions || [];
-  if (!pending.length) return;
+  if (!pending.length) return { master: 0, doctor: 0 };
+  const enrolled = { master: 0, doctor: 0 };
   pending.forEach((plan) => {
     const discipline = state.data.disciplines.find((item) => item.id === plan.disciplineId);
     if (!discipline) return;
     discipline.gradStudents ||= { master: 0, doctor: 0 };
     discipline.gradStudents[plan.level] += plan.count;
+    enrolled[plan.level] += plan.count;
     const tuition = plan.level === "doctor" ? state.data.tuition.doctor : state.data.tuition.master;
-    income(plan.count * tuition, plan.level === "doctor" ? "博士生学费" : "硕士生学费", `${discipline.name}${plan.count}名${plan.level === "doctor" ? "博士生" : "硕士生"}入校`);
+    income(plan.count * tuition, plan.level === "doctor" ? "?????" : "?????", discipline.name + plan.count + (plan.level === "doctor" ? "??????" : "??????"));
   });
   state.data.pendingGradAdmissions = [];
+  return enrolled;
 }
 
 function collectAnnualTuition() {
@@ -804,7 +811,9 @@ function renderTalent() {
             <div><h3>${t.name} · ${t.title} → ${req.to}</h3><div class="meta">${t.disciplineName} · ${t.majorName || "不限专业"} · 教学 ${t.teaching} · 科研 ${t.research} · 论文 ${t.papers || 0} · 晋升点 ${t.promotion}</div></div>
             <span class="pill">${money(t.salary)}/年</span>
           </div>
-          <div class="actions"><button class="ghost" onclick="promoteTeacher('${t.id}')">申请晋升</button></div>
+          <div class="meta">${promotionRequirementText(req)}</div>
+
+          <div class="actions"><button class="ghost" onclick="promoteTeacher('${t.id}')">????</button></div>
         </article>
       `;}).join("") || `<p class="meta">暂无符合晋升条件的教师。教师需要满足教学、科研、论文和晋升点要求。</p>`}
     </div>
@@ -1294,601 +1303,31 @@ function advanceTime(months = 1) {
     state.data.teachers.forEach((t) => t.promotion += 2);
     updateStockPrice();
     progressProjects();
-    if ([6, 12].includes(state.data.month)) settleTerm();
-    if (!state.data.pendingEvent && Math.random() < 0.16) createEvent();
-  }
-  save();
-  render();
-}
-
-function progressProjects() {
-  state.data.proposals.filter((p) => p.status === "进行中").forEach((p) => {
-    p.progress = Math.min(100, p.progress + 12 + Math.floor(Math.random() * 20));
-    if (p.progress >= 100) {
-      p.status = "已完成";
-      if (p.expectedIncome) income(p.expectedIncome, "横向项目到账", p.name);
-      state.data.reputation = clamp(state.data.reputation + p.reputation, 0, 100);
-      if (p.type === "科研") state.data.papersCount += 1;
-      const teacher = state.data.teachers.find((t) => t.id === p.teacherId);
-      if (teacher) {
-        teacher.promotion += p.gain;
-        teacher.papers = (teacher.papers || 0) + 1;
-      }
-      state.data.papers.unshift({
-        id: uid(),
-        title: p.type === "科研" ? `${p.name}阶段性研究` : `${p.name}应用成果报告`,
-        level: p.type === "科研" ? ["CSSCI", "北大核心", "SCI二区", "SCI一区"][Math.floor(Math.random() * 4)] : "横向报告",
-        discipline: p.discipline,
-        teacherName: p.teacherName,
-        impact: p.gain,
-        status: "已发表",
-      });
-    }
-  });
-}
-
-function settleTerm() {
-  const m = metrics();
-  const tuition = m.students * 900;
-  const grant = 65000 + state.data.reputation * 1000;
-  const salary = state.data.teachers.reduce((sum, t) => sum + Math.round(t.salary / 2), 0);
-  const interest = state.data.loans.reduce((sum, loan) => sum + Math.round(loan.balance * loan.rate / 2), 0);
-  income(tuition + grant, "学期收入", "学费收入与政府拨款");
-  if (salary && spend(salary, "教师薪酬", "本学期教师薪酬")) {}
-  if (interest && spend(interest, "贷款利息", "本学期贷款利息")) {}
-  recalcRank();
-  addRank();
-}
-
-
-function takeLoan(amount) {
-  state.data.loans.push({ id: uid(), balance: amount, rate: 0.06 });
-  income(amount, "学校贷款", `获得贷款${money(amount)}`);
-  save();
-  render();
-}
-
-function repayLoan(amount) {
-  const loan = state.data.loans.find((item) => item.balance > 0);
-  if (!loan) return msg("当前没有贷款。", true);
-  const pay = Math.min(amount, loan.balance);
-  if (!spend(pay, "贷款还款", `偿还贷款${money(pay)}`)) return;
-  loan.balance -= pay;
-  state.data.loans = state.data.loans.filter((item) => item.balance > 0);
-  save();
-  render();
-}
-
-function buyStock(stockId, shares) {
-  const stock = state.data.stocks.find((item) => item.id === stockId);
-  if (!stock) return;
-  const cost = shares * stock.price;
-  if (!spend(cost, "股票投资", `买入${shares}股${stock.name}`)) return;
-  stock.shares += shares;
-  save();
-  render();
-}
-
-function sellStock(stockId, shares) {
-  const stock = state.data.stocks.find((item) => item.id === stockId);
-  if (!stock) return;
-  const count = Math.min(shares, stock.shares);
-  if (!count) return msg("当前没有足够股票。", true);
-  stock.shares -= count;
-  income(count * stock.price, "股票卖出", `卖出${count}股${stock.name}`);
-  save();
-  render();
-}
-
-
-function updateStockPrice() {
-  state.data.stocks.forEach((stock) => {
-    const swing = stock.risk === "稳健" ? 0.07 : stock.risk === "成长" ? 0.12 : 0.18;
-    const drift = 1 + (Math.random() - 0.47) * swing;
-    stock.price = clamp(Math.round(stock.price * drift), 20, 420);
-  });
-}
-
-function recalcRank() {
-  const avgStrength = state.data.disciplines.reduce((sum, d) => sum + d.strength + d.research, 0) / Math.max(1, state.data.disciplines.length);
-  const avgTeacher = state.data.teachers.reduce((sum, t) => sum + t.teaching + t.research, 0) / Math.max(1, state.data.teachers.length);
-  const buildingScore = state.data.buildings.reduce((sum, b) => sum + b.quantity * 2 + b.level * 3, 0);
-  const total = avgStrength * 1.4 + avgTeacher * 0.8 + buildingScore + state.data.reputation;
-  state.data.provinceRank = clamp(80 - Math.floor(total / 7), 1, 120);
-  state.data.domesticRank = clamp(430 - Math.floor(total * 1.15), 1, 600);
-  state.data.worldRank = clamp(2600 - Math.floor(total * 5.1), 50, 3000);
-  state.data.teachingRank = clamp(380 - Math.floor((avgTeacher + buildingScore) * 1.4), 1, 600);
-  state.data.researchRank = clamp(520 - Math.floor((state.data.papersCount * 8 + avgStrength) * 1.35), 1, 700);
-}
-
-function createEvent() {
-  const events = [
-    { title: "校园开放日", body: "大量家长和学生来校参观，是否追加预算提升接待规格？", choices: [
-      { text: "高规格接待", money: -30000, reputation: 5, satisfaction: 3 },
-      { text: "常规接待", money: -8000, reputation: 2, satisfaction: 1 },
-      { text: "线上直播替代", money: 0, reputation: -1, satisfaction: -1 },
-    ] },
-    { title: "企业合作机会", body: "本地企业愿意赞助学校，但希望共同署名实验基地。", choices: [
-      { text: "接受并共建基地", money: 90000, reputation: 3 },
-      { text: "只接受小额赞助", money: 30000, reputation: 1 },
-      { text: "婉拒合作", money: 0, reputation: -1 },
-    ] },
-  ];
-  state.data.pendingEvent = { id: uid(), ...events[Math.floor(Math.random() * events.length)] };
-}
-
-function decideEvent(index) {
-  const choice = state.data.pendingEvent.choices[index];
-  if (choice.money > 0) income(choice.money, "事件决策", choice.text);
-  if (choice.money < 0 && !spend(Math.abs(choice.money), "事件决策", choice.text)) return;
-  state.data.reputation = clamp(state.data.reputation + (choice.reputation || 0), 0, 100);
-  state.data.satisfaction = clamp(state.data.satisfaction + (choice.satisfaction || 0), 0, 100);
-  state.data.pendingEvent = null;
-  save();
-  render();
-}
-
-function closeEventModal() {
-  if (state.data?.pendingEvent) state.dismissedEventId = state.data.pendingEvent.id;
-  $("#eventModal").hidden = true;
-}
-
-function money(value) {
-  return `¥${Math.round(value || 0).toLocaleString("zh-CN")}`;
-}
-
-function renderStatus() {
-  const d = state.data;
-  const m = metrics();
-  $("#schoolLogo").textContent = d.logo || "校";
-  $("#schoolName").textContent = d.schoolName;
-  $("#schoolLevel").textContent = currentSchoolLevel().name;
-  $("#schoolAddress").textContent = d.address;
-  $("#statusGrid").hidden = state.tab !== "campus";
-  if (state.tab !== "campus") return;
-  $("#statusGrid").innerHTML = [
-    ["资金", money(d.money)],
-    ["声望", d.reputation],
-    ["满意度", `${d.satisfaction}%`],
-    ["教师水平", d.teacherLevel],
-    ["时间", `第${d.year}学年 · ${d.month}月`],
-    ["规模", `${m.teachers}师 / ${m.students}生 / ${m.majors}专业`],
-  ].map(([label, value]) => `<div class="stat"><span>${label}</span><b>${value}</b></div>`).join("");
-}
-
-function renderEvent() {
-  const modal = $("#eventModal");
-  if (modal) modal.hidden = true;
-}
-
-function createEvent() {
-  state.data.pendingEvent = null;
-}
-
-function degreeRequirement(degreeType) {
-  return degreeType === "硕士点"
-    ? { students: 240, teachers: 8, professors: 1, papers: 3, research: 42, strength: 48, money: 90000 }
-    : { students: 520, teachers: 16, professors: 4, papers: 10, research: 88, strength: 82, money: 180000 };
-}
-
-function degreeRequirementText(req) {
-  return `学生${req.students} · 教师${req.teachers} · 教授${req.professors} · 论文/成果${req.papers} · 科研${req.research} · 实力${req.strength}`;
-}
-
-function renderDisciplines() {
-  const levelIndex = state.data.schoolLevelIndex || 0;
-  view.innerHTML = `
-    <div class="section-head"><div><p class="eyebrow">学科与专业</p><h2>开设学院</h2></div></div>
-    <div class="item">
-      <h3>开设学院</h3>
-      <div class="form-grid">
-        <select id="collegePreset" class="full" onchange="fillCollegePreset()">
-          <option value="">选择学院模板</option>
-          <option value="__custom__">自定义学院</option>
-          ${COLLEGES.map((item) => {
-            const need = collegeMinLevel(item);
-            const locked = levelIndex < need;
-            return `<option value="${item.name}" ${locked ? "disabled" : ""}>${item.name}${locked ? `（需${SCHOOL_LEVELS[need].name}）` : ""}</option>`;
-          }).join("")}
-        </select>
-        <div id="customCollegeFields" class="form-grid full" hidden>
-          <input id="customCollegeName" class="full" placeholder="自定义学院名称">
-          <input id="customCollegeMajors" class="full" placeholder="专业名称，用逗号分隔">
-        </div>
-        <div id="majorPreview" class="major-preview full"><span class="meta">选择学院后，这里会逐条列出专业。</span></div>
-        <button class="secondary full" onclick="openDiscipline()">开设学院</button>
-      </div>
-    </div>
-    <div class="list">
-      ${state.data.disciplines.map((d) => {
-        const majors = state.data.majors.filter((m) => m.disciplineId === d.id);
-        const degreeTarget = d.degreeLevel === "博士点" ? "" : d.degreeLevel === "硕士点" ? "博士点" : "硕士点";
-        const req = degreeTarget ? degreeRequirement(degreeTarget) : null;
-        return `
-          <article class="item">
-            <div class="item-top">
-              <div>
-                <h3>${d.name}</h3>
-                <div class="meta">${d.degreeLevel} · 学科排名 ${d.rank} · 实力 ${d.strength} · 科研 ${d.research}</div>
-                <div class="meta">专业：${majors.map((m) => `${m.name}(${m.students}人，${cohortSummary(m)})`).join("、") || "暂无"}</div>
-                <div class="meta">硕士生 ${d.gradStudents?.master || 0} · 博士生 ${d.gradStudents?.doctor || 0}</div>
-                ${req ? `<div class="meta">申请${degreeTarget}要求：${degreeRequirementText(req)}</div>` : ""}
-              </div>
-              <span class="pill">第${d.rank}</span>
-            </div>
-            <div class="actions">
-              <button class="primary" onclick="investDiscipline('${d.id}', 50000)">投入 ${money(50000)}</button>
-              ${degreeTarget ? `<button class="ghost" onclick="applyDegree('${d.id}', '${degreeTarget}')">申请${degreeTarget}</button>` : ""}
-            </div>
-          </article>
-        `;
-      }).join("") || `<p class="meta">暂无学院，请先开设学院和专业。</p>`}
-    </div>
-  `;
-}
-
-function fillCollegePreset() {
-  const value = $("#collegePreset").value;
-  const custom = value === "__custom__";
-  $("#customCollegeFields").hidden = !custom;
-  if (custom) {
-    $("#majorPreview").innerHTML = `<span class="meta">填写自定义学院和专业后开设。</span>`;
-    return;
-  }
-  const item = COLLEGES.find((college) => college.name === value);
-  $("#majorPreview").innerHTML = item ? item.majors.map((major) => `<div class="major-row">${major}</div>`).join("") : `<span class="meta">选择学院后，这里会逐条列出专业。</span>`;
-}
-
-function openDiscipline() {
-  const value = $("#collegePreset").value;
-  const isCustom = value === "__custom__";
-  const preset = COLLEGES.find((college) => college.name === value);
-  if (!isCustom && preset && (state.data.schoolLevelIndex || 0) < collegeMinLevel(preset)) {
-    return msg(`办学层次不足，需要达到${SCHOOL_LEVELS[collegeMinLevel(preset)].name}。`, true);
-  }
-  const name = (isCustom ? $("#customCollegeName").value : preset?.name || "").trim();
-  if (!name) return msg("请选择或输入学院名称。", true);
-  if (state.data.disciplines.some((d) => d.name === name)) return msg("该学院已存在。", true);
-  const majors = isCustom
-    ? $("#customCollegeMajors").value.split(/[，,、]/).map((item) => item.trim()).filter(Boolean).slice(0, 6)
-    : preset?.majors || [];
-  const cost = 180000 + Math.max(0, majors.length - 1) * 25000;
-  if (!spend(cost, "学科建设", `开设${name}`)) return;
-  const discipline = { id: uid(), name, degreeLevel: (state.data.schoolLevelIndex || 0) >= 1 ? "本科" : "专科", rank: 260, strength: 24, research: 10, gradStudents: { master: 0, doctor: 0 } };
-  state.data.disciplines.push(discipline);
-  majors.forEach((major) => state.data.majors.push({ id: uid(), disciplineId: discipline.id, disciplineName: name, name: major, students: 0, quality: 50, cohorts: [], pendingCount: 0 }));
-  save();
-  render();
-}
-
-function disciplineOptions(selected) {
-  if (!state.data.disciplines.length) return `<option value="">请先开设学院</option>`;
-  return state.data.disciplines.map((d) => `<option value="${d.name}" ${d.name === selected ? "selected" : ""}>${d.name} · ${d.degreeLevel}</option>`).join("");
-}
-
-function majorOptionsForDiscipline(disciplineName, selectedMajorId = "") {
-  const majors = state.data.majors.filter((m) => !disciplineName || m.disciplineName === disciplineName);
-  if (!majors.length) return `<option value="">请先开设专业</option>`;
-  return majors.map((m) => `<option value="${m.id}" ${m.id === selectedMajorId ? "selected" : ""}>${m.disciplineName} · ${m.name}</option>`).join("");
-}
-
-function graduateDisciplineOptions(selected) {
-  const items = state.data.disciplines.filter((d) => d.degreeLevel !== "本科" && d.degreeLevel !== "专科");
-  if (!items.length) return `<option value="">请先申请硕博点</option>`;
-  return items.map((d) => `<option value="${d.name}" ${d.name === selected ? "selected" : ""}>${d.name} · ${d.degreeLevel}</option>`).join("");
-}
-
-function syncJobMajorOptions() {
-  const discipline = $("#jobDiscipline")?.value || "";
-  const select = $("#jobMajor");
-  if (!select) return;
-  select.innerHTML = `<option value="">不限专业</option>${majorOptionsForDiscipline(discipline, state.data.ui.selectedJobMajor || "")}`;
-}
-
-function rememberTalentSelections() {
-  state.data.ui.selectedJobDiscipline = $("#jobDiscipline")?.value || state.data.ui.selectedJobDiscipline || "";
-  state.data.ui.selectedJobMajor = $("#jobMajor")?.value || "";
-  state.data.ui.selectedStudentMajor = $("#studentMajor")?.value || state.data.ui.selectedStudentMajor || "";
-  state.data.ui.selectedGradDiscipline = $("#gradDiscipline")?.value || state.data.ui.selectedGradDiscipline || "";
-  state.data.ui.selectedGradLevel = $("#gradLevel")?.value || state.data.ui.selectedGradLevel || "master";
-}
-
-function renderTalent() {
-  const selectedJobDiscipline = state.data.ui.selectedJobDiscipline || state.data.disciplines[0]?.name || "";
-  const selectedJobMajor = state.data.ui.selectedJobMajor || "";
-  const selectedStudentMajor = state.data.ui.selectedStudentMajor || state.data.majors[0]?.id || "";
-  const selectedGradDiscipline = state.data.ui.selectedGradDiscipline || state.data.disciplines.find((d) => d.degreeLevel !== "本科" && d.degreeLevel !== "专科")?.name || "";
-  const selectedGradLevel = state.data.ui.selectedGradLevel || "master";
-  const eligibleTeachers = state.data.teachers.filter(isPromotionEligible);
-  view.innerHTML = `
-    <div class="section-head"><div><p class="eyebrow">人才系统</p><h2>招聘、招生、晋升</h2></div></div>
-    <div class="item">
-      <h3>发布教师招聘公告</h3>
-      <div class="form-grid">
-        <input id="jobTitle" class="full" value="青年教师招聘公告">
-        <select id="jobDiscipline" onchange="state.data.ui.selectedJobDiscipline=this.value; state.data.ui.selectedJobMajor=''; syncJobMajorOptions();">${disciplineOptions(selectedJobDiscipline)}</select>
-        <select id="jobMajor"><option value="">不限专业</option>${majorOptionsForDiscipline(selectedJobDiscipline, selectedJobMajor)}</select>
-        <select id="jobLevel"><option>优秀</option><option>普通</option><option>杰出</option></select>
-        <input id="jobSalary" type="number" value="120000" min="60000" step="10000">
-        <input id="jobBudget" type="number" value="25000" min="8000" step="1000">
-        <input id="jobPositions" type="number" value="2" min="1" max="12" step="1" placeholder="岗位数">
-        <button class="primary full" onclick="createJobPost()">发布公告并收简历</button>
-      </div>
-    </div>
-    <div class="item">
-      <h3>本科招生</h3>
-      <div class="form-grid">
-        <select id="studentMajor" class="full" onchange="state.data.ui.selectedStudentMajor=this.value">${majorOptionsForDiscipline("", selectedStudentMajor)}</select>
-        <select id="studentLevel"><option>普通</option><option>优秀</option><option>拔尖</option></select>
-        <input id="studentCount" type="number" value="40" min="10" step="10">
-        <button class="secondary" onclick="recruitStudents()">招生</button>
-      </div>
-      <div class="meta">每年6月招生，9月新生以大一身份入校，大四在6月毕业。</div>
-    </div>
-    <div class="item">
-      <h3>硕博招生</h3>
-      <div class="form-grid">
-        <select id="gradDiscipline">${graduateDisciplineOptions(selectedGradDiscipline)}</select>
-        <select id="gradLevel"><option value="master" ${selectedGradLevel === "master" ? "selected" : ""}>硕士生</option><option value="doctor" ${selectedGradLevel === "doctor" ? "selected" : ""}>博士生</option></select>
-        <input id="gradCount" type="number" value="12" min="2" step="2">
-        <button class="secondary" onclick="recruitGradStudents()">招生</button>
-      </div>
-    </div>
-    <h3>招聘公告与简历</h3>
-    <div class="list">${state.data.jobPosts.map(renderPost).join("") || `<p class="meta">暂无招聘公告。</p>`}</div>
-    <h3 style="margin-top:14px">教师晋升</h3>
-    <div class="list">
-      ${eligibleTeachers.map((t) => {
-        const req = promotionRequirement(t);
-        return `
-        <article class="item">
-          <div class="item-top">
-            <div><h3>${t.name} · ${t.title} → ${req.to}</h3><div class="meta">${t.disciplineName} · ${t.majorName || "不限专业"} · 教学 ${t.teaching} · 科研 ${t.research} · 论文 ${t.papers || 0} · 晋升点 ${t.promotion}</div></div>
-            <span class="pill">${money(t.salary)}/年</span>
-          </div>
-          <div class="actions"><button class="ghost" onclick="promoteTeacher('${t.id}')">申请晋升</button></div>
-        </article>
-      `;}).join("") || `<p class="meta">暂无符合晋升条件的教师。</p>`}
-    </div>
-  `;
-  syncJobMajorOptions();
-}
-
-function renderPost(post) {
-  const remaining = Math.max(0, (post.positions || 1) - (post.hiredCount || 0));
-  return `
-    <article class="item">
-      <div class="item-top">
-        <div><h3>${post.title}</h3><div class="meta">${post.discipline} · ${post.majorName || "不限专业"} · ${post.level} · ${post.status}</div><div class="meta">岗位 ${post.positions || 1} 个 · 已录用 ${post.hiredCount || 0} 人 · 剩余 ${remaining} 个</div></div>
-        <span class="pill">${post.applications.length}份简历</span>
-      </div>
-      <div class="list" style="margin-top:10px">
-        ${post.applications.map((app) => `
-          <div class="item">
-            <div class="item-top">
-              <div><h3>${app.name} · ${app.title}</h3><div class="meta">教学 ${app.teaching} · 科研 ${app.research} · 匹配 ${app.fit}</div><div class="meta">${app.bio}</div></div>
-              <span class="pill ${app.status === "待筛选" ? "warn" : ""}">${app.status}</span>
-            </div>
-            <div class="actions">
-              <button class="primary" ${app.status !== "待筛选" || remaining <= 0 ? "disabled" : ""} onclick="hireApplication('${post.id}', '${app.id}')">录用</button>
-              <button class="ghost" ${app.status !== "待筛选" ? "disabled" : ""} onclick="rejectApplication('${post.id}', '${app.id}')">不合适</button>
-            </div>
-          </div>
-        `).join("")}
-      </div>
-    </article>
-  `;
-}
-
-function createJobPost() {
-  rememberTalentSelections();
-  const title = $("#jobTitle").value || "教师招聘公告";
-  const discipline = $("#jobDiscipline").value;
-  if (!discipline) return msg("请先开设学院。", true);
-  const major = state.data.majors.find((m) => m.id === $("#jobMajor").value);
-  const level = $("#jobLevel").value;
-  const salary = Number($("#jobSalary").value || 120000);
-  const budget = Number($("#jobBudget").value || 25000);
-  const positions = clamp(Number($("#jobPositions").value || 1), 1, 12);
-  const currentTeachers = state.data.teachers.filter((t) => t.disciplineName === discipline && (!major || t.majorName === major.name)).length;
-  const studentLoad = state.data.majors.filter((m) => m.disciplineName === discipline && (!major || m.id === major.id)).reduce((sum, m) => sum + m.students, 0);
-  const maxByNeed = Math.max(1, Math.ceil(studentLoad / 120) + 2);
-  if (currentTeachers + positions > maxByNeed) return msg(`该学院/专业当前最多还需要${Math.max(0, maxByNeed - currentTeachers)}名教师。`, true);
-  if (!spend(budget, "招聘公告", `发布${discipline}${level}招聘`)) return;
-  const bias = { 普通: 0, 优秀: 12, 杰出: 25 }[level] || 0;
-  const applications = Array.from({ length: Math.max(5, positions * 3) + Math.floor(Math.random() * 3) }, () => {
-    const teaching = clamp(42 + Math.floor(Math.random() * 38) + bias, 30, 99);
-    const research = clamp(38 + Math.floor(Math.random() * 42) + bias, 30, 99);
-    return {
-      id: uid(),
-      name: randomName(),
-      title: level === "杰出" ? "教授" : level === "优秀" ? "副教授" : "讲师",
-      teaching,
-      research,
-      papers: level === "杰出" ? 5 + Math.floor(Math.random() * 5) : level === "优秀" ? 1 + Math.floor(Math.random() * 4) : Math.floor(Math.random() * 2),
-      fit: clamp(Math.round((teaching + research) / 2 + Math.random() * 12), 35, 99),
-      salary: Math.round(salary * (0.9 + Math.random() * 0.3)),
-      status: "待筛选",
-      bio: "教师投递简历，适合补充学院方向。",
-    };
-  });
-  state.data.jobPosts.unshift({ id: uid(), title, discipline, majorId: major?.id || "", majorName: major?.name || "不限专业", level, positions, hiredCount: 0, status: "开放", applications });
-  save();
-  render();
-}
-
-function hireApplication(postId, appId) {
-  const post = state.data.jobPosts.find((item) => item.id === postId);
-  if ((post.hiredCount || 0) >= (post.positions || 1)) return msg("该招聘公告岗位已录满。", true);
-  const app = post.applications.find((item) => item.id === appId);
-  const onboarding = Math.max(12000, Math.round(app.salary * 0.18));
-  if (!spend(onboarding, "教师录用", `录用${app.name}`)) return;
-  state.data.teachers.push({ id: uid(), name: app.name, title: app.title, disciplineName: post.discipline, majorName: post.majorName === "不限专业" ? "" : post.majorName, teaching: app.teaching, research: app.research, salary: app.salary, promotion: 0, papers: app.papers || 0 });
-  app.status = "已录用";
-  post.hiredCount = (post.hiredCount || 0) + 1;
-  if (post.hiredCount >= post.positions) {
-    post.status = "已关闭";
-    post.applications.filter((item) => item.status === "待筛选").forEach((item) => item.status = "未录用");
-  }
-  state.data.teacherLevel = clamp(state.data.teacherLevel + 2, 0, 100);
-  save();
-  render();
-}
-
-function rejectApplication(postId, appId) {
-  const post = state.data.jobPosts.find((item) => item.id === postId);
-  post.applications.find((item) => item.id === appId).status = "未录用";
-  save();
-  render();
-}
-
-function promotionRequirement(teacher) {
-  const route = [
-    { from: "助教", to: "讲师", points: 12, teaching: 55, research: 35, papers: 0, cost: 20000 },
-    { from: "讲师", to: "副教授", points: 30, teaching: 60, research: 50, papers: 1, cost: 50000 },
-    { from: "副教授", to: "教授", points: 65, teaching: 68, research: 65, papers: 3, cost: 100000 },
-    { from: "教授", to: "二级教授", points: 110, teaching: 75, research: 78, papers: 6, cost: 160000 },
-    { from: "二级教授", to: "一级教授", points: 160, teaching: 82, research: 88, papers: 10, cost: 240000 },
-  ];
-  return route.find((item) => item.from === teacher.title) || null;
-}
-
-function isPromotionEligible(teacher) {
-  const req = promotionRequirement(teacher);
-  return !!req && teacher.promotion >= req.points && teacher.teaching >= req.teaching && teacher.research >= req.research && (teacher.papers || 0) >= req.papers;
-}
-
-function promoteTeacher(id) {
-  const t = state.data.teachers.find((item) => item.id === id);
-  const req = promotionRequirement(t);
-  if (!req) return msg("该教师已达到最高职级。", true);
-  if (!isPromotionEligible(t)) return msg(`晋升条件不足：晋升点${req.points} · 教学${req.teaching} · 科研${req.research} · 论文${req.papers}。`, true);
-  if (!spend(req.cost, "教师晋升", `${t.name}晋升${req.to}`)) return;
-  t.title = req.to;
-  t.promotion -= req.points;
-  t.teaching += 4;
-  t.research += 5;
-  save();
-  render();
-}
-
-function applyDegree(id, degreeType) {
-  const d = state.data.disciplines.find((item) => item.id === id);
-  const req = degreeRequirement(degreeType);
-  const dm = disciplineMetrics(d);
-  const missing = [];
-  if (dm.students < req.students) missing.push(`学生${req.students}人`);
-  if (dm.teachers < req.teachers) missing.push(`教师${req.teachers}人`);
-  if (dm.professors < req.professors) missing.push(`教授${req.professors}人`);
-  if (dm.papers < req.papers) missing.push(`论文/成果${req.papers}项`);
-  if (d.research < req.research) missing.push(`科研${req.research}`);
-  if (d.strength < req.strength) missing.push(`实力${req.strength}`);
-  if (missing.length) return msg(`申请条件不足：${missing.join("、")}。`, true);
-  if (!spend(req.money, "硕博点申请", `${d.name}申请${degreeType}`)) return;
-  const score = Math.round(d.strength * 0.55 + d.research * 0.8 + Math.random() * 12);
-  const need = degreeType === "硕士点" ? 48 : 82;
-  if (score >= need) {
-    d.degreeLevel = degreeType;
-    d.strength += 8;
-    d.research += 10;
-    d.gradStudents ||= { master: 0, doctor: 0 };
-    state.data.reputation = clamp(state.data.reputation + 4, 0, 100);
-    msg(`${degreeType}申请通过。`);
-  } else {
-    msg(`${degreeType}申请未通过，请继续提升学科实力。`, true);
-  }
-  save();
-  render();
-}
-
-function recruitStudents() {
-  rememberTalentSelections();
-  if (state.data.month !== 6) return msg("本科招生仅在6月开放，请等到招生季。", true);
-  const major = state.data.majors.find((m) => m.id === $("#studentMajor").value);
-  if (!major) return msg("请先开设学院和专业后再招生。", true);
-  const level = $("#studentLevel").value;
-  const count = Math.max(10, Number($("#studentCount").value || 40));
-  const unit = { 普通: 180, 优秀: 320, 拔尖: 520 }[level] || 180;
-  const quality = { 普通: 51, 优秀: 56, 拔尖: 62 }[level] || 51;
-  if (!spend(count * unit, "招生宣传", `${major.name}登记${level}新生`)) return;
-  state.data.pendingAdmissions.push({ id: uid(), majorId: major.id, count, quality });
-  major.pendingCount = (major.pendingCount || 0) + count;
-  addFinance("记录", "本科招生", 0, `${major.name}登记了${count}名${level}新生，9月入校`);
-  save();
-  render();
-}
-
-function recruitGradStudents() {
-  rememberTalentSelections();
-  if (state.data.month !== 6) return msg("硕博招生仅在6月开放，请等到招生季。", true);
-  const discipline = state.data.disciplines.find((d) => d.name === $("#gradDiscipline").value);
-  if (!discipline) return msg("请先申请硕博点后再招生。", true);
-  const level = $("#gradLevel").value;
-  if (discipline.degreeLevel === "本科" || discipline.degreeLevel === "专科") return msg("该学院尚未获批硕博点。", true);
-  if (level === "doctor" && discipline.degreeLevel !== "博士点") return msg("只有博士点学院才能招收博士生。", true);
-  const count = Math.max(2, Number($("#gradCount").value || 12));
-  const unit = level === "doctor" ? 1800 : 1200;
-  if (!spend(count * unit, "硕博招生", `${discipline.name}登记${level === "doctor" ? "博士生" : "硕士生"}`)) return;
-  state.data.pendingGradAdmissions.push({ id: uid(), disciplineId: discipline.id, count, level });
-  addFinance("记录", "硕博招生", 0, `${discipline.name}登记了${count}名${level === "doctor" ? "博士生" : "硕士生"}，9月入校`);
-  save();
-  render();
-}
-
-function enrollPendingAdmissions() {
-  const pending = state.data.pendingAdmissions || [];
-  if (!pending.length) return;
-  pending.forEach((plan) => {
-    const major = state.data.majors.find((item) => item.id === plan.majorId);
-    if (!major) return;
-    major.cohorts ||= [];
-    major.cohorts.push({ grade: 1, count: plan.count, quality: plan.quality });
-    major.pendingCount = Math.max(0, (major.pendingCount || 0) - plan.count);
-    major.quality = Math.round((major.quality + plan.quality) / 2);
-  });
-  state.data.pendingAdmissions = [];
-  refreshStudentTotals();
-}
-
-function enrollPendingGradAdmissions() {
-  const pending = state.data.pendingGradAdmissions || [];
-  if (!pending.length) return;
-  pending.forEach((plan) => {
-    const discipline = state.data.disciplines.find((item) => item.id === plan.disciplineId);
-    if (!discipline) return;
-    discipline.gradStudents ||= { master: 0, doctor: 0 };
-    discipline.gradStudents[plan.level] += plan.count;
-  });
-  state.data.pendingGradAdmissions = [];
-}
-
-function collectAnnualTuition() {
-  const undergrad = state.data.majors.reduce((sum, major) => sum + major.students, 0) * state.data.tuition.undergrad;
-  const master = state.data.disciplines.reduce((sum, d) => sum + (d.gradStudents?.master || 0), 0) * state.data.tuition.master;
-  const doctor = state.data.disciplines.reduce((sum, d) => sum + (d.gradStudents?.doctor || 0), 0) * state.data.tuition.doctor;
-  const total = undergrad + master + doctor;
-  if (total) income(total, "年度学费", "9月在校生年度学费结算");
-}
-
-function advanceTime(months = 1) {
-  for (let i = 0; i < months; i++) {
-    state.data.month += 1;
-    if (state.data.month > 12) {
-      state.data.month = 1;
-      state.data.year += 1;
-    }
-    state.data.teachers.forEach((t) => t.promotion += 2);
-    updateStockPrice();
-    progressProjects();
     if (state.data.month === 6) {
-      holdGraduationCeremony();
+      const graduates = holdGraduationCeremony();
       settleTerm();
+      openReminderEvent(
+        "6????????",
+        graduates
+          ? `6???????????????????????????????????${graduates} ???????????????????????????????`
+          : "6???????????????????????????????????????????????????",
+      );
     }
     if (state.data.month === 9) {
       advanceAcademicYear();
-      enrollPendingAdmissions();
-      enrollPendingGradAdmissions();
+      const undergradEnrolled = enrollPendingAdmissions();
+      const gradEnrolled = enrollPendingGradAdmissions();
       collectAnnualTuition();
+      const summary = [];
+      if (undergradEnrolled) summary.push(`?????? ${undergradEnrolled} ??`);
+      if (gradEnrolled.master) summary.push(`?????? ${gradEnrolled.master} ??`);
+      if (gradEnrolled.doctor) summary.push(`?????? ${gradEnrolled.doctor} ??`);
+      openReminderEvent(
+        "9????????",
+        summary.length
+          ? `9???????????${summary.join("??")}???????????????`
+          : "9??????????????????????????????????????????????",
+      );
     }
     if (state.data.month === 12) {
       settleTerm();
@@ -1972,16 +1411,21 @@ function spend(amount, category, note) {
 
 function promotionRoute() {
   return [
-    { from: "助教", to: "讲师", points: 10, teaching: 52, research: 28, papers: 0, cost: 12000 },
-    { from: "讲师", to: "副教授", points: 28, teaching: 60, research: 45, papers: 1, cost: 40000 },
-    { from: "副教授", to: "教授", points: 60, teaching: 68, research: 60, papers: 3, cost: 90000 },
-    { from: "教授", to: "杰出教授", points: 100, teaching: 75, research: 72, papers: 6, cost: 150000 },
-    { from: "杰出教授", to: "院士", points: 180, teaching: 82, research: 88, papers: 10, cost: 300000 },
+    { from: "???", to: "???", points: 18, teaching: 58, research: 38, papers: 1, cost: 20000 },
+    { from: "???", to: "?????", points: 45, teaching: 68, research: 58, papers: 3, cost: 70000 },
+    { from: "?????", to: "???", points: 90, teaching: 76, research: 72, papers: 6, cost: 140000 },
+    { from: "???", to: "??????", points: 150, teaching: 84, research: 86, papers: 10, cost: 240000 },
+    { from: "??????", to: "???", points: 240, teaching: 92, research: 95, papers: 16, cost: 400000 },
   ];
 }
 
 function promotionRequirement(teacher) {
   return promotionRoute().find((item) => item.from === teacher.title) || null;
+}
+
+function promotionRequirementText(req) {
+  if (!req) return "";
+  return `?????????${req.points} ? ???${req.teaching} ? ???${req.research} ? ???${req.papers} ? ???${money(req.cost)}`;
 }
 
 function isPromotionEligible(teacher) {
@@ -2303,7 +1747,9 @@ function renderTalent() {
               <div><h3>${t.name} · ${t.title} → ${req.to}</h3><div class="meta">${t.disciplineName} · ${t.majorName || "不限专业"} · 教学 ${t.teaching} · 科研 ${t.research} · 论文 ${t.papers || 0} · 晋升点 ${t.promotion || 0}</div></div>
               <span class="pill">${money(t.salary)}/年</span>
             </div>
-            <div class="actions"><button class="ghost" onclick="promoteTeacher('${t.id}')">申请晋升</button></div>
+            <div class="meta">${promotionRequirementText(req)}</div>
+
+            <div class="actions"><button class="ghost" onclick="promoteTeacher('${t.id}')">????</button></div>
           </article>
         `;
       }).join("") || `<p class="meta">暂无符合晋升条件的教师。</p>`}
