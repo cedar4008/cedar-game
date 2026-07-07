@@ -43,10 +43,33 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   justify-content: center;
 }
 .setup-card h2 { font-size: 30px; }
+.school-name-input { min-height: 52px !important; font-size: 18px; font-weight: 700; }
+.auth-shell { gap: 8px; }
+.auth-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+.account-list {
+  display: grid;
+  gap: 10px;
+}
+.account-row {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 10px;
+  background: #fff;
+}
+.account-meta {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
 
 .topbar {
   display: flex;
-  align-items: flex-start;
+  align-items: stretch;
   justify-content: space-between;
   gap: 8px;
   padding: 4px 0 12px;
@@ -56,12 +79,13 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   gap: 8px;
   flex: 1;
   min-width: 0;
-  padding: 10px;
+  min-height: 108px;
+  padding: 14px;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: rgba(255,255,255,.82);
 }
-.brand { display: flex; align-items: flex-start; gap: 10px; min-width: 0; }
+.brand { display: flex; align-items: flex-start; gap: 10px; min-width: 0; height: 100%; }
 .brand-main { display: grid; gap: 4px; min-width: 0; }
 .school-logo {
   display: grid;
@@ -82,7 +106,7 @@ button:disabled { cursor: not-allowed; opacity: .5; }
   font-weight: 700;
 }
 h1, h2, h3, p { margin-top: 0; }
-h1 { margin-bottom: 0; font-size: 23px; line-height: 1.18; letter-spacing: 0; overflow-wrap: anywhere; }
+h1 { margin-bottom: 0; font-size: 28px; line-height: 1.18; letter-spacing: 0; overflow-wrap: anywhere; }
 h2 { font-size: 20px; }
 h3 { font-size: 16px; margin-bottom: 8px; }
 .level-badge {
@@ -105,9 +129,10 @@ h3 { font-size: 16px; margin-bottom: 8px; }
   flex-wrap: wrap;
   justify-content: flex-end;
   gap: 4px;
-  flex: 0 0 132px;
+  flex: 0 0 170px;
+  min-height: 108px;
   margin-top: 0;
-  padding: 6px;
+  padding: 10px;
   border: 0;
   border-radius: 8px;
   background: #f7f1ff;
