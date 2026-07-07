@@ -48,9 +48,9 @@ function normalizeAccounts(accounts) {
       username,
       password: String(account.password || ""),
       role: isAdmin ? "admin" : "user",
-      status: isAdmin ? "approved" : (account.status || "pending"),
+      status: "approved",
       createdAt: account.createdAt || nowText(),
-      approvedAt: isAdmin ? (account.approvedAt || account.createdAt || nowText()) : (account.approvedAt || ""),
+      approvedAt: account.approvedAt || account.createdAt || nowText(),
     };
   });
 }
@@ -83,12 +83,12 @@ function render() {
     </div>
     <div class="item warn-card">
       <h3>数据说明</h3>
-      <p class="meta">当前 GitHub Pages 版本的账号和审核数据保存在本浏览器本地。</p>
-      <p class="meta">如果你是在另一台手机、电脑、浏览器，或无痕模式里注册账号，这个管理员页面不会显示那条待审核记录。</p>
-      <p class="meta">当前浏览器账号总数：${accounts.length}，待审核数量：${pendingAccounts.length}</p>
+      <p class="meta">当前 GitHub Pages 版本的账号数据保存在本浏览器本地。</p>
+      <p class="meta">现在普通账号注册后可直接登录，不再需要管理员审核；只有 ${ADMIN_USERNAME} 保留管理员权限和无限资金。</p>
+      <p class="meta">当前浏览器账号总数：${accounts.length}</p>
     </div>
     <div class="item">
-      <h3>待审核账号</h3>
+      <h3>审核状态</h3>
       <div class="account-list">
         ${pendingAccounts.map((account) => `
           <div class="account-row">
@@ -106,7 +106,7 @@ function render() {
               <button class="danger" onclick="deleteAccount('${account.id}')">删除账号</button>
             </div>
           </div>
-        `).join("") || '<p class="meta">暂无待审核账号。若账号是在别的设备或别的浏览器注册，这里不会显示。</p>'}
+        `).join("") || '<p class="meta">当前版本已取消管理员审核，所有新注册账号都会直接通过。</p>'}
       </div>
     </div>
     <div class="item">
@@ -133,9 +133,7 @@ function render() {
               <span class="pill">${account.role === "admin" ? "管理员" : "用户"}</span>
             </div>
             <div class="actions">
-              ${account.role !== "admin" && account.status !== "approved" ? `<button class="primary" onclick="approveAccount('${account.id}')">通过</button>` : ""}
-              ${account.role !== "admin" && account.status !== "rejected" ? `<button class="ghost" onclick="rejectAccount('${account.id}')">驳回</button>` : ""}
-              <button class="danger" onclick="deleteAccount('${account.id}')">删除账号</button>
+              ${account.role !== "admin" ? `<button class="danger" onclick="deleteAccount('${account.id}')">删除账号</button>` : ""}
             </div>
           </div>
         `).join("") || '<p class="meta">暂无账号。</p>'}
